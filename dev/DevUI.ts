@@ -1,0 +1,208 @@
+import { AdditiveBlending, CustomBlending, Material, MeshPhysicalMaterial, MultiplyBlending, NoBlending, NormalBlending, SubtractiveBlending } from 'three';
+import { GUI } from '../lib/lilgui.module.js';
+import { CustomPhysicalMaterial } from '../materials/CustomPhysicalMaterial.js';
+
+
+// add hashController to GUI types
+
+declare module '../lib/lilgui.module.js' {
+	interface GUI {
+		hashedControllers: Map<string, Controller> | undefined;
+		hashedFolders: Map<string, GUI> | undefined;
+
+		add<Obj extends object, PropertyName extends keyof Obj & string>(
+			object: Obj,
+			property: PropertyName,
+			$1?: number | object | any[],
+			max?: number,
+			step?: number,
+			name?: string
+		): Controller;
+
+		// update display of all controllers
+		updateDisplay(): void;
+	}
+}
+
+// monkey patch GUI to extend add and addFolder
+let GUIAdd = GUI.prototype.add;
+GUI.prototype.add = function<Obj extends object, PropertyName extends keyof Obj & string>(
+	object: Obj,
+	property: PropertyName,
+	$1?: number | object | any[],
+	max?: number,
+	step?: number,
+	name?: string
+) {
+	// use stack trace to get the name of the calling function
+	let stack = new Error().stack;
+	let caller = stack?.split('\n')[2].trim();
+	let hash = `${caller} | ${object.constructor.name} | ${property} | ${name ?? ''}`;
+
+	if (this.hashedControllers == null) {
+		this.hashedControllers = new Map();
+	}
+
+	// find existing controller
+	let existingController = this.hashedControllers.get(hash);
+	if (existingController != null) {
+		// update controller with $1, max, step
+		if (typeof $1 == 'number') {
+			existingController.min($1);
+		} else if (Array.isArray($1)) {
+			existingController.options($1);
+		}
+		if (max != null) {
+			existingController.max(max);
+		}
+		if (step != null) {
+			existingController.step(step);
+		}
+		if (name != null) {
+			existingController.name(name);
+		}
+		// update object and field
+		existingController.object = object;
+		existingController.property = property;
+		existingController.updateDisplay();
+		return existingController;
+	}
+
+	let controller = GUIAdd.apply(this, arguments as any);
+	if (name != null) {
+		controller.name(name);
+	}
+
+	this.hashedControllers.set(hash, controller);
+
+	return controller;
+}
+
+let GUIAddFolder = GUI.prototype.addFolder;
+GUI.prototype.addFolder = function(name: string) {
+	// use stack trace to get the name of the calling function
+	let stack = new Error().stack;
+	let caller = stack?.split('\n')[2].trim();
+	let hash = `${caller} | ${name ?? ''}`;
+
+	if (this.hashedFolders == null) {
+		this.hashedFolders = new Map();
+	}
+
+	// find existing folder
+	let existingFolder = this.hashedFolders.get(hash);
+	if (existingFolder != null) {
+		return existingFolder;
+	}
+
+	let folder = GUIAddFolder.apply(this, arguments as any);
+	this.hashedFolders.set(hash, folder);
+	return folder;
+}
+
+// add updateDisplay to GUI
+GUI.prototype.updateDisplay = function() {
+	for (let controller of this.controllersRecursive()) {
+		controller.updateDisplay();
+	}
+}
+
+// Wrap in getter/setter so it's only created when used
+export class DevUI {
+
+	private static _ui: GUI | null = null;
+	static get ui() {
+		DevUI._ui = DevUI._ui ?? this.initUI();
+		return DevUI._ui;
+	}
+	
+	private static initUI(): GUI {
+		let gui = new GUI();
+		// use 'h' key to toggle GUI
+		window.addEventListener('keydown', e => {
+			if (e.code == 'KeyH') {
+				gui.show(gui._hidden);
+			}
+		});
+		return gui;
+	}
+
+	// forward methods
+	static add<Obj extends object, PropertyName extends keyof Obj & string>(
+		object: Obj,
+		property: PropertyName,
+		$1?: number | object | any[],
+		max?: number,
+		step?: number,
+		name?: string
+	) {
+		return DevUI.ui.add(object, property, $1, max, step, name);
+	}
+
+	static addFolder(name: string) {
+		return DevUI.ui.addFolder(name);
+	}
+
+	static addMaterial(material: MeshPhysicalMaterial, name: string) {
+		let materialFolder = DevUI.addFolder(name);
+		materialFolder.addColor(material, 'color');
+		materialFolder.add(material, 'flatShading');
+		materialFolder.add(material, 'depthWrite');
+		materialFolder.add(material, 'depthTest');
+		materialFolder.add(material, 'transparent');
+		materialFolder.add(material, 'blending', {
+			NoBlending,
+			NormalBlending,
+			AdditiveBlending,
+			SubtractiveBlending,
+			MultiplyBlending,
+			CustomBlending,
+		});
+		materialFolder.add(material, 'premultipliedAlpha');
+		materialFolder.add(material, 'opacity', 0, 1);
+		materialFolder.add(material, 'metalness', 0, 1);
+		materialFolder.add(material, 'roughness', 0, 1);
+		materialFolder.add(material, 'emissiveIntensity', 0, 4);
+		materialFolder.add(material, 'iridescence', 0, 1);
+		materialFolder.add(material, 'iridescenceIOR', 0, 3);
+		let iridescenceThicknessRange = { min: 0, max: 1  };
+		materialFolder.add(iridescenceThicknessRange, 'min', 0, 1).onChange(() => {
+			material.iridescenceThicknessRange = [iridescenceThicknessRange.min, iridescenceThicknessRange.max];
+		});
+		materialFolder.add(iridescenceThicknessRange, 'max', 0, 1).onChange(() => {
+			material.iridescenceThicknessRange = [iridescenceThicknessRange.min, iridescenceThicknessRange.max];
+		});
+		materialFolder.add(material, 'envMapIntensity', 0, 4);
+
+		// transmission
+		materialFolder.add(material, 'transmission', 0, 1);
+		materialFolder.add(material, 'ior', 0, 3);
+		materialFolder.add(material, 'thickness', 0, 10);
+		materialFolder.addColor(material, 'attenuationColor');
+		materialFolder.add(material, 'attenuationDistance', 0, 10);
+
+		// clearcoat
+		materialFolder.add(material, 'clearcoat', 0, 1);
+		materialFolder.add(material, 'clearcoatRoughness', 0, 1);
+		materialFolder.add(material, 'reflectivity', 0, 1);
+
+		// specular
+		materialFolder.add(material, 'specularIntensity', 0, 1);
+		materialFolder.addColor(material, 'specularColor');
+
+		// sheen
+		materialFolder.add(material, 'sheen', 0, 1);
+		materialFolder.add(material, 'sheenRoughness', 0, 1);
+		materialFolder.addColor(material, 'sheenColor');
+		
+		// bump
+		materialFolder.add(material, 'bumpScale', -.01, .01);
+
+		return materialFolder;
+	}
+
+	static updateDisplay() {
+		DevUI.ui.updateDisplay();
+	}
+
+}
