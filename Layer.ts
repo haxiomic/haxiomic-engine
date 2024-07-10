@@ -1,6 +1,10 @@
 export enum Layer {
-	Base = 0,
-	Interactive = 1,
-	UserInterface = 2,
-	Developer = 3,
+	Default = 0,
+	Interactive,
+	UserInterface,
+	Developer,
+	Blended,
+	DepthPrepass,
+	WorldPosition,
+	UVPosition,
 }

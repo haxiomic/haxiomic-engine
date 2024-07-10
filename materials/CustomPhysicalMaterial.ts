@@ -5,7 +5,7 @@
  */
 import { Color, IUniform, MeshPhysicalMaterialParameters, NormalMapTypes, ShaderLib, ShaderMaterial, ShaderMaterialParameters, TangentSpaceNormalMap, Texture, Uniform, Vector2 } from "three";
 
-export type CustomPhysicalMaterialParameters<UserUniforms extends { [uniform: string]: IUniform } | undefined> = ShaderMaterialParameters & MeshPhysicalMaterialParameters & {
+export type CustomPhysicalMaterialParameters<UserUniforms extends { [uniform: string]: IUniform } | undefined = {}> = ShaderMaterialParameters & MeshPhysicalMaterialParameters & {
 	transparency?: number, // missing from type definitions
 	defaultAttributeValues?: { [name: string]: Array<number> }, // missing from type definitions
 	uniforms?: UserUniforms;

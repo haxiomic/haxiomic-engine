@@ -1,6 +1,5 @@
 import { AdditiveBlending, CustomBlending, Material, MeshPhysicalMaterial, MultiplyBlending, NoBlending, NormalBlending, SubtractiveBlending } from 'three';
 import { GUI } from '../lib/lilgui.module.js';
-import { CustomPhysicalMaterial } from '../materials/CustomPhysicalMaterial.js';
 
 
 // add hashController to GUI types
@@ -143,60 +142,72 @@ export class DevUI {
 		return DevUI.ui.addFolder(name);
 	}
 
-	static addMaterial(material: MeshPhysicalMaterial, name: string) {
+	static addMaterial(material: Material, name: string) {
 		let materialFolder = DevUI.addFolder(name);
-		materialFolder.addColor(material, 'color');
-		materialFolder.add(material, 'flatShading');
-		materialFolder.add(material, 'depthWrite');
-		materialFolder.add(material, 'depthTest');
-		materialFolder.add(material, 'transparent');
-		materialFolder.add(material, 'blending', {
-			NoBlending,
-			NormalBlending,
-			AdditiveBlending,
-			SubtractiveBlending,
-			MultiplyBlending,
-			CustomBlending,
-		});
-		materialFolder.add(material, 'premultipliedAlpha');
-		materialFolder.add(material, 'opacity', 0, 1);
-		materialFolder.add(material, 'metalness', 0, 1);
-		materialFolder.add(material, 'roughness', 0, 1);
-		materialFolder.add(material, 'emissiveIntensity', 0, 4);
-		materialFolder.add(material, 'iridescence', 0, 1);
-		materialFolder.add(material, 'iridescenceIOR', 0, 3);
-		let iridescenceThicknessRange = { min: 0, max: 1  };
-		materialFolder.add(iridescenceThicknessRange, 'min', 0, 1).onChange(() => {
-			material.iridescenceThicknessRange = [iridescenceThicknessRange.min, iridescenceThicknessRange.max];
-		});
-		materialFolder.add(iridescenceThicknessRange, 'max', 0, 1).onChange(() => {
-			material.iridescenceThicknessRange = [iridescenceThicknessRange.min, iridescenceThicknessRange.max];
-		});
-		materialFolder.add(material, 'envMapIntensity', 0, 4);
 
-		// transmission
-		materialFolder.add(material, 'transmission', 0, 1);
-		materialFolder.add(material, 'ior', 0, 3);
-		materialFolder.add(material, 'thickness', 0, 10);
-		materialFolder.addColor(material, 'attenuationColor');
-		materialFolder.add(material, 'attenuationDistance', 0, 10);
+		if ('color' in material) materialFolder.addColor(material, 'color');
+		if ('flatShading' in material) materialFolder.add(material, 'flatShading');
+		if ('depthWrite' in material) materialFolder.add(material, 'depthWrite');
+		if ('depthTest' in material) materialFolder.add(material, 'depthTest');
+		if ('transparent' in material) materialFolder.add(material, 'transparent');
+		if ('blending' in material) {
+			materialFolder.add(material, 'blending', {
+				NoBlending,
+				NormalBlending,
+				AdditiveBlending,
+				SubtractiveBlending,
+				MultiplyBlending,
+				CustomBlending,
+			});
+		}
+		if ('premultipliedAlpha' in material) materialFolder.add(material, 'premultipliedAlpha');
+		if ('opacity' in material) materialFolder.add(material, 'opacity', 0, 1);
+		if ('metalness' in material) materialFolder.add(material, 'metalness', 0, 1);
+		if ('roughness' in material) materialFolder.add(material, 'roughness', 0, 1);
+		if ('emissiveIntensity' in material) materialFolder.add(material, 'emissiveIntensity', 0, 4);
+		if ('envMapIntensity' in material) materialFolder.add(material, 'envMapIntensity', 0, 4);
 
-		// clearcoat
-		materialFolder.add(material, 'clearcoat', 0, 1);
-		materialFolder.add(material, 'clearcoatRoughness', 0, 1);
-		materialFolder.add(material, 'reflectivity', 0, 1);
+		if ('iridescence' in material) {
+			materialFolder.add(material, 'iridescence', 0, 1);
+			if ('iridescenceIOR' in material) materialFolder.add(material, 'iridescenceIOR', 0, 3);
+			if ('iridescenceThicknessRange' in material) {
+				let iridescenceThicknessRange = { min: 0, max: 1 };
+				materialFolder.add(iridescenceThicknessRange, 'min', 0, 1).onChange(() => {
+					material.iridescenceThicknessRange = [iridescenceThicknessRange.min, iridescenceThicknessRange.max];
+				});
+				materialFolder.add(iridescenceThicknessRange, 'max', 0, 1).onChange(() => {
+					material.iridescenceThicknessRange = [iridescenceThicknessRange.min, iridescenceThicknessRange.max];
+				});
+			}
+		}
 
-		// specular
-		materialFolder.add(material, 'specularIntensity', 0, 1);
-		materialFolder.addColor(material, 'specularColor');
+		if ('transmission' in material) {
+			materialFolder.add(material, 'transmission', 0, 1);
+			if ('ior' in material) materialFolder.add(material, 'ior', 0, 3);
+			if ('thickness' in material) materialFolder.add(material, 'thickness', 0, 10);
+			if ('attenuationColor' in material) materialFolder.addColor(material, 'attenuationColor');
+			if ('attenuationDistance' in material) materialFolder.add(material, 'attenuationDistance', 0, 10);
+		}
 
-		// sheen
-		materialFolder.add(material, 'sheen', 0, 1);
-		materialFolder.add(material, 'sheenRoughness', 0, 1);
-		materialFolder.addColor(material, 'sheenColor');
+		if ('clearcoat' in material) {
+			materialFolder.add(material, 'clearcoat', 0, 1);
+			if ('clearcoatRoughness' in material) materialFolder.add(material, 'clearcoatRoughness', 0, 1);
+		}
 		
-		// bump
-		materialFolder.add(material, 'bumpScale', -.01, .01);
+		if ('reflectivity' in material) materialFolder.add(material, 'reflectivity', 0, 1);
+
+		if ('specularIntensity' in material) {
+			materialFolder.add(material, 'specularIntensity', 0, 1);
+			if ('specularColor' in material) materialFolder.addColor(material, 'specularColor');
+		}
+
+		if ('sheen' in material) {
+			materialFolder.add(material, 'sheen', 0, 1);
+			if ('sheenRoughness' in material) materialFolder.add(material, 'sheenRoughness', 0, 1);
+			if ('sheenColor' in material) materialFolder.addColor(material, 'sheenColor');
+		}
+
+		if ('bumpScale' in material) materialFolder.add(material, 'bumpScale', -.01, .01);
 
 		return materialFolder;
 	}
