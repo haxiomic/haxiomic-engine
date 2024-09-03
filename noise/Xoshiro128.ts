@@ -9,6 +9,10 @@ export class Xoshiro128 {
 	seedC: number = 0;
 	seedD: number = 0;
 
+	constructor() {
+		this.resetSeed();
+	}
+
 	resetSeed(input: string = "hello-random") {
 		let seedGen = this.xmur3StringHasher(input);
 		this.seedA = seedGen();

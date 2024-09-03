@@ -209,9 +209,10 @@ export default class ThreeInteraction {
     }
 
     clientToClipSpace(e: {clientX: number, clientY: number}) {
+        let rect = this.interactionManager.el.getBoundingClientRect()
         return {
-            x: (e.clientX / this.interactionManager.el.offsetWidth) * 2 - 1,
-            y: -(e.clientY / this.interactionManager.el.offsetHeight) * 2 + 1,
+            x: (e.clientX - rect.left) / rect.width * 2 - 1,
+            y: -(e.clientY - rect.top) / rect.height * 2 + 1,
         }
     }
     

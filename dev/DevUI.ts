@@ -119,7 +119,9 @@ export class DevUI {
 		let gui = new GUI();
 		// use 'h' key to toggle GUI
 		window.addEventListener('keydown', e => {
-			if (e.code == 'KeyH') {
+			let isTextInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement).isContentEditable;
+
+			if (!isTextInput && e.code == 'KeyH') {
 				gui.show(gui._hidden);
 			}
 		});

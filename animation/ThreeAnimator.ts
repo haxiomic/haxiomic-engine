@@ -12,7 +12,7 @@ export enum QuaternionSpringMode {
  */
 export class ThreeAnimator {
 
-	protected animator = new Animator(this.stepQuaternionSprings.bind(this));
+	animator = new Animator(this.stepQuaternionSprings.bind(this));
 
 	onAfterStep = this.animator.onAfterStep;
 	onBeforeStep = this.animator.onBeforeStep;
@@ -133,6 +133,14 @@ export class ThreeAnimator {
 		} else { // number
 			return this.animator.getVelocity(object, field) as T;
 		}
+	}
+
+	startAnimationFrameLoop() {
+		return this.animator.startAnimationFrameLoop();
+	}
+
+	startIntervalLoop(interval_ms?: number) {
+		return this.animator.startIntervalLoop(interval_ms);
 	}
 
 	private stepQuaternionSprings(dt_s: number) {
