@@ -1,15 +1,16 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { CineonToneMapping } from 'three';
-import { PhysicallyBasedViewer } from './PhysicallyBasedViewer';
+import { PhysicallyBasedViewer, PhysicallyBasedViewerOptions } from './PhysicallyBasedViewer';
 
 interface ViewerProps extends React.HTMLProps<HTMLDivElement> {
+    options?: Partial<PhysicallyBasedViewerOptions>;
     initialize: (viewer: PhysicallyBasedViewer, container: HTMLDivElement) => void;
 }
 
 const PhysicallyBasedViewerReact = forwardRef<HTMLDivElement, ViewerProps>((props, ref) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
 
-    const { initialize, style, ...divProps } = props;
+    const { initialize, style, options, ...divProps } = props;
 
     useImperativeHandle(ref, () => containerRef.current!);
 
@@ -38,6 +39,7 @@ const PhysicallyBasedViewerReact = forwardRef<HTMLDivElement, ViewerProps>((prop
                 bloomThreshold: 0.0,
                 msaaSamples: 4,
             },
+            ...props.options,
         });
 
         props.initialize(viewer, containerRef.current);
