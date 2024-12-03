@@ -19,6 +19,7 @@ export class TextureVisualizer extends Object3D {
 			let material = new MeshBasicMaterial({
 				map: texture,
 				side: DoubleSide,
+				fog: false,
 			});
 			texturePlane = new Mesh(new PlaneGeometry(1, 1), material);
 			texturePlane.onBeforeRender = (renderer, scene, camera, geometry, _material, group) => {
@@ -189,7 +190,7 @@ class TextureDisplayMaterial extends ShaderMaterial {
 	uniforms: {
 		source: Uniform;
 		targetSize: Uniform;
-	} = this.uniforms;
+	};
 	
 	constructor(texture: Texture, params?: {
 		transparent?: boolean;

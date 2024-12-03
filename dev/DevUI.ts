@@ -1,4 +1,4 @@
-import { AdditiveBlending, CustomBlending, Material, MeshPhysicalMaterial, MultiplyBlending, NoBlending, NormalBlending, SubtractiveBlending } from 'three';
+import { AdditiveBlending, CustomBlending, Material, MultiplyBlending, NoBlending, NormalBlending, SubtractiveBlending } from 'three';
 import { GUI } from '../lib/lilgui.module.js';
 
 
@@ -35,7 +35,7 @@ GUI.prototype.add = function<Obj extends object, PropertyName extends keyof Obj 
 ) {
 	// use stack trace to get the name of the calling function
 	let stack = new Error().stack;
-	let caller = stack?.split('\n')[2].trim();
+	let caller = stack?.split('\n')[2]?.trim();
 	let hash = `${caller} | ${object.constructor.name} | ${property} | ${name ?? ''}`;
 
 	if (this.hashedControllers == null) {

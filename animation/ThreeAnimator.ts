@@ -1,5 +1,5 @@
 import { Euler, Matrix4, Quaternion, Vector2, Vector3, Vector4 } from "three";
-import { Animator } from "./Animator";
+import { Animator, Tween, TweenStepFn } from "./Animator";
 import { Spring } from "./Spring";
 
 export enum QuaternionSpringMode {
@@ -7,15 +7,21 @@ export enum QuaternionSpringMode {
 	YawPitchRoll,
 }
 
+type SupportedTypes = Vector4 | Vector3 | Vector2 | Quaternion | Euler | number;
+
 /**
  * Extends Animator to add support for animating vectors and quaternions
  */
 export class ThreeAnimator {
 
-	animator = new Animator(this.stepQuaternionSprings.bind(this));
+	animator: Animator;
 
-	onAfterStep = this.animator.onAfterStep;
-	onBeforeStep = this.animator.onBeforeStep;
+	get onAfterStep() {
+		return this.animator.onAfterStep;
+	}
+	get onBeforeStep() {
+		return this.animator.onBeforeStep;
+	}
 
 	quaternionSprings = new Map<Quaternion, {
 		q: Quaternion,
@@ -27,11 +33,56 @@ export class ThreeAnimator {
 		mode: QuaternionSpringMode,
 	}>();
 
+	constructor(animator: Animator = new Animator()) {
+		this.animator = animator;
+		this.animator.onBeforeStep.on(e => this.stepQuaternionSprings(e.dt_s));
+	}
+
+	setTo<
+		Obj,
+		Name extends keyof Obj,
+		T extends Obj[Name] & SupportedTypes
+	>(
+		object: Obj,
+		field: Name,
+		target: T
+	) {
+		if (target instanceof Vector4) {
+			let v = object[field] as Vector4;
+			this.animator.setTo(v, 'x', target.x);
+			this.animator.setTo(v, 'y', target.y);
+			this.animator.setTo(v, 'z', target.z);
+			this.animator.setTo(v, 'w', target.w);
+		} else if (target instanceof Vector3) {
+			let v = object[field] as Vector3;
+			this.animator.setTo(v, 'x', target.x);
+			this.animator.setTo(v, 'y', target.y);
+			this.animator.setTo(v, 'z', target.z);
+		} else if (target instanceof Vector2) {
+			let v = object[field] as Vector2;
+			this.animator.setTo(v, 'x', target.x);
+			this.animator.setTo(v, 'y', target.y);
+		} else if (target instanceof Quaternion) {
+			let q = object[field] as Quaternion;
+			this.animator.setTo(q, 'x', target.x);
+			this.animator.setTo(q, 'y', target.y);
+			this.animator.setTo(q, 'z', target.z);
+			this.animator.setTo(q, 'w', target.w);
+		} else if (target instanceof Euler) {
+			let e = object[field] as Euler;
+			this.animator.setTo(e, 'x', target.x);
+			this.animator.setTo(e, 'y', target.y);
+			this.animator.setTo(e, 'z', target.z);
+			e.order = target.order;
+		} else { // number
+			this.animator.setTo(object, field, target as any);
+		}
+	}
+
 	springTo<
 		Obj,
 		Name extends keyof Obj,
-		T extends Obj[Name] &
-			(Vector4 | Vector3 | Vector2 | Quaternion | Euler | number) // supported types
+		T extends Obj[Name] & SupportedTypes
 	>(
 		object: Obj,
 		field: Name,
@@ -75,12 +126,134 @@ export class ThreeAnimator {
 		}
 	}
 
+	customTweenTo<
+		Obj,
+		Name extends keyof Obj,
+		T extends Obj[Name] & SupportedTypes
+	>(
+		object: Obj,
+		field: Name,
+		target: T,
+		duration_s: number,
+		step: TweenStepFn
+	) {
+		if (target instanceof Vector4) {
+			let v = object[field] as Vector4;
+			this.animator.customTweenTo(v, 'x', target.x, duration_s, step);
+			this.animator.customTweenTo(v, 'y', target.y, duration_s, step);
+			this.animator.customTweenTo(v, 'z', target.z, duration_s, step);
+			this.animator.customTweenTo(v, 'w', target.w, duration_s, step);
+		} else if (target instanceof Vector3) {
+			let v = object[field] as Vector3;
+			this.animator.customTweenTo(v, 'x', target.x, duration_s, step);
+			this.animator.customTweenTo(v, 'y', target.y, duration_s, step);
+			this.animator.customTweenTo(v, 'z', target.z, duration_s, step);
+		} else if (target instanceof Vector2) {
+			let v = object[field] as Vector2;
+			this.animator.customTweenTo(v, 'x', target.x, duration_s, step);
+			this.animator.customTweenTo(v, 'y', target.y, duration_s, step);
+		} else if (target instanceof Quaternion) {
+			throw new Error('Quaternion customTweenTo not yet supported, try springTo or use Euler');
+		} else if (target instanceof Euler) {
+			let e = object[field] as Euler;
+			this.animator.customTweenTo(e, 'x', target.x, duration_s, step);
+			this.animator.customTweenTo(e, 'y', target.y, duration_s, step);
+			this.animator.customTweenTo(e, 'z', target.z, duration_s, step);
+			e.order = target.order;
+		} else { // number
+			this.animator.customTweenTo(object, field, target as any, duration_s, step);
+		}
+	}
+
+	linearTo<
+		Obj,
+		Name extends keyof Obj,
+		T extends Obj[Name] & SupportedTypes
+	>(
+		object: Obj,
+		field: Name,
+		target: T,
+		duration_s: number
+	) {
+		this.customTweenTo(object, field, target, duration_s, Tween.linearStep);
+	}
+
+	easeInOutTo<
+		Obj,
+		Name extends keyof Obj,
+		T extends Obj[Name] & SupportedTypes
+	>(
+		object: Obj,
+		field: Name,
+		target: T,
+		duration_s: number
+	) {
+		this.customTweenTo(object, field, target, duration_s, Tween.easeInOutStep);
+	}
+
+	easeInTo<
+		Obj,
+		Name extends keyof Obj,
+		T extends Obj[Name] & SupportedTypes
+	>(
+		object: Obj,
+		field: Name,
+		target: T,
+		duration_s: number
+	) {
+		this.customTweenTo(object, field, target, duration_s, Tween.easeInStep);
+	}
+
+	easeOutTo<
+		Obj,
+		Name extends keyof Obj,
+		T extends Obj[Name] & SupportedTypes
+	>(
+		object: Obj,
+		field: Name,
+		target: T,
+		duration_s: number
+	) {
+		this.customTweenTo(object, field, target, duration_s, Tween.easeOutStep);
+	}
+
 	step(dt_s: number) {
 		this.animator.step(dt_s);
 	}
 
 	tick() {
 		this.animator.tick();
+	}
+
+	remove<
+		Obj,
+		Name extends keyof Obj
+	>(
+		object: Obj,
+		field: Name
+	) {
+		let v = object[field];
+		if (v instanceof Vector4) {
+			this.animator.remove(v, 'x');
+			this.animator.remove(v, 'y');
+			this.animator.remove(v, 'z');
+			this.animator.remove(v, 'w');
+		} else if (v instanceof Vector3) {
+			this.animator.remove(v, 'x');
+			this.animator.remove(v, 'y');
+			this.animator.remove(v, 'z');
+		} else if (v instanceof Vector2) {
+			this.animator.remove(v, 'x');
+			this.animator.remove(v, 'y');
+		} else if (v instanceof Quaternion) {
+			this.quaternionSprings.delete(v);
+		} else if (v instanceof Euler) {
+			this.animator.remove(v, 'x');
+			this.animator.remove(v, 'y');
+			this.animator.remove(v, 'z');
+		} else { // number
+			this.animator.remove(object, field);
+		}
 	}
 
 	removeAll() {

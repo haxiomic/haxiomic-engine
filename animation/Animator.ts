@@ -6,60 +6,6 @@ enum AnimationType {
 	Tween,
 }
 
-namespace Tween {
-
-	export type Parameters = {
-		x0: number,
-		t0_ms: number,
-		duration_s: number,
-	}
-
-	export function linearStep(
-		object: any,
-		field: string | number | symbol,
-		target: number,
-		params: Tween.Parameters,
-		dt_s: number
-	) {
-		let dx = target - params.x0;
-		let t = (performance.now() - params.t0_ms) / 1000;
-		let u = t / params.duration_s;
-		let x_new = params.x0 + dx * u;
-		object[field] = x_new;
-	}
-
-	// cubic ease in out
-	export function easeInOutStep(
-		object: any,
-		field: string | number | symbol,
-		target: number,
-		params: Tween.Parameters,
-		dt_s: number
-	) {
-		let dx = target - params.x0;
-		let t = (performance.now() - params.t0_ms) / 1000;
-		let u = t / params.duration_s;
-		let x_new = params.x0 + dx * u * u * (3 - 2 * u);
-		object[field] = x_new;
-	}
-
-	export function easeInStep(
-		object: any,
-		field: string | number | symbol,
-		target: number,
-		params: Tween.Parameters,
-		dt_s: number
-	) {
-		let dx = target - params.x0;
-		let t = (performance.now() - params.t0_ms) / 1000;
-		let u = t / params.duration_s;
-		let x_new = params.x0 + dx * u * u * u;
-		object[field] = x_new;
-	}
-}
-
-type TweenStepFn = (object: any, field: string | number | symbol, target: number, params: Tween.Parameters, dt_s: number) => void;
-
 /**
  * Physically based animation of numeric properties of objects
  * 
@@ -125,6 +71,10 @@ export class Animator {
 		this.customTweenTo(object, field, target, duration_s, Tween.easeInStep);
 	}
 
+	easeOutTo<Obj, Name extends keyof Obj>(object: Obj, field: Name, target: Obj[Name] & number, duration_s: number) {
+		this.customTweenTo(object, field, target, duration_s, Tween.easeOutStep);
+	}
+
 	/**
 	 * Remove animation from the object and set the field to the target value
 	 */
@@ -167,7 +117,6 @@ export class Animator {
 						}
 					} break;
 					case AnimationType.Tween: {
-						console.log('stepping tween', object, field, animation.tweenParams);
 						// step the tween
 						let x = object[field];
 						animation.step!(object, field, animation.target, animation.tweenParams!, dt_s);
@@ -308,6 +257,75 @@ export class Animator {
 		}
 		animation.type = type;
 		return animation;
+	}
+
+}
+
+export type TweenStepFn = (object: any, field: string | number | symbol, target: number, params: Tween.Parameters, dt_s: number) => void;
+
+export namespace Tween {
+
+	export type Parameters = {
+		x0: number,
+		t0_ms: number,
+		duration_s: number,
+	}
+
+	export function linearStep(
+		object: any,
+		field: string | number | symbol,
+		target: number,
+		params: Tween.Parameters,
+		dt_s: number
+	) {
+		let dx = target - params.x0;
+		let t = (performance.now() - params.t0_ms) / 1000;
+		let u = t / params.duration_s;
+		let x_new = params.x0 + dx * u;
+		object[field] = x_new;
+	}
+
+	// cubic ease in out
+	export function easeInOutStep(
+		object: any,
+		field: string | number | symbol,
+		target: number,
+		params: Tween.Parameters,
+		dt_s: number
+	) {
+		let dx = target - params.x0;
+		let t = (performance.now() - params.t0_ms) / 1000;
+		let u = t / params.duration_s;
+		let x_new = params.x0 + dx * u * u * (3 - 2 * u);
+		object[field] = x_new;
+	}
+
+	export function easeInStep(
+		object: any,
+		field: string | number | symbol,
+		target: number,
+		params: Tween.Parameters,
+		dt_s: number
+	) {
+		let dx = target - params.x0;
+		let t = (performance.now() - params.t0_ms) / 1000;
+		let u = t / params.duration_s;
+		let x_new = params.x0 + dx * u * u * u;
+		object[field] = x_new;
+	}
+
+	export function easeOutStep(
+		object: any,
+		field: string | number | symbol,
+		target: number,
+		params: Tween.Parameters,
+		dt_s: number
+	) {
+		let dx = target - params.x0;
+		let t = (performance.now() - params.t0_ms) / 1000;
+		let u = t / params.duration_s;
+		let x_new = params.x0 + dx * (1 - Math.pow(1 - u, 3));
+		object[field] = x_new;
 	}
 
 }

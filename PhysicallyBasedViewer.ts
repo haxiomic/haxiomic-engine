@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, AmbientLight, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, WebGLRenderer, WebGLRenderTarget } from "three";
+	import { ACESFilmicToneMapping, AmbientLight, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, VSMShadowMap, WebGLRenderer, WebGLRenderTarget } from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { GLTF, GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader";
@@ -19,6 +19,29 @@ import RenderTargetStore from "./rendering/RenderTargetStore";
 // three js stats
 import Stats from 'three/examples/jsm/libs/stats.module';
 import { TransformGizmo } from "./dev/TransformGizmo";
+
+export type PhysicallyBasedViewerOptions<Controls extends {
+	enabled?: boolean,
+	update?: (dt_s: number) => void,
+} = OrbitControls> = {
+	canvas: HTMLCanvasElement,
+	camera?: PerspectiveCamera,
+	devMode?: boolean,
+	controls?: Controls | ((camera: Camera, interactionManager: InteractionManager) => Controls),
+	defaultEnvironment?: boolean,
+	postProcessing?: {
+		enabled?: boolean,
+		bloom?: boolean,
+		bloomStrength?: number,
+		bloomRadius?: number,
+		bloomThreshold?: number,
+		msaaSamples?: number,
+	},
+	toneMapping?: ToneMapping,
+	toneMappingExposure?: number,
+	shadows?: boolean,
+	defaultLights?: boolean,
+}
 
 /**
  */
@@ -95,24 +118,7 @@ export class PhysicallyBasedViewer<
 	} | null = null;
 
 	constructor(
-		options: {
-			canvas: HTMLCanvasElement,
-			camera?: PerspectiveCamera,
-			devMode?: boolean,
-			controls?: Controls | ((camera: Camera, interactionManager: InteractionManager) => Controls),
-			/** default `true` */
-			defaultEnvironment?: boolean,
-			postProcessing?: {
-				enabled?: boolean,
-				bloom?: boolean,
-				bloomStrength?: number,
-				bloomRadius?: number,
-				bloomThreshold?: number,
-				msaaSamples?: number,
-			},
-			toneMapping?: ToneMapping,
-			toneMappingExposure?: number,
-		}
+		options: PhysicallyBasedViewerOptions<Controls>
 	) {
 		this.postProcessingEnabled = options.postProcessing?.enabled ?? this.postProcessingEnabled;
 		this.toneMapping = options.toneMapping ?? this.toneMapping;
@@ -139,15 +145,15 @@ export class PhysicallyBasedViewer<
 		renderer.debug.onShaderError = this.onShaderError;
 
 		if (this.devMode) {
-			Console.log(`<magenta><b>PhysicallyBasedViewer</>: dev mode active<//> <b>three v${REVISION}</>`);
-			console.log(`Capabilities`, renderer.capabilities);
+			// Console.log(`<magenta><b>PhysicallyBasedViewer</>: dev mode active<//> <b>three v${REVISION}</>`);
+			// console.log(`Capabilities`, renderer.capabilities);
 			this.renderLayers.enable(Layer.Developer);
 		}
 
 		let context = renderer.getContext();
 		if (`drawingBufferColorSpace` in context) {
 			// context.drawingBufferColorSpace = 'display-p3';
-			Console.log('<b>PhysicallyBasedViewer</b>: Using display-p3 color space');
+			// Console.log('<b>PhysicallyBasedViewer</b>: Using display-p3 color space');
 		}
 
 		// PBR setup
@@ -170,6 +176,7 @@ export class PhysicallyBasedViewer<
 			orbitControls.dampingFactor = 0.1;
 			orbitControls.rotateSpeed = 1.1;
 			orbitControls.zoomSpeed = 0.5;
+			orbitControls.maxDistance = 10;
 			orbitControls.addEventListener('start', () => {
 				canvas.style.cursor = 'grabbing';
 			});
@@ -189,13 +196,15 @@ export class PhysicallyBasedViewer<
 
 		this.scene.add(this.modelRoot);
 
-		// create fallback ambient light to use while HDR environment map is loading
-		this.scene.add(this.fallbackAmbientLight);
-
 		// directional light for sun-lit geometry shading
-		this.directionalLight = new DirectionalLight(0xffffff, 1.0);
+		this.directionalLight = new DirectionalLight(0xffffff, 3.0);
 		this.directionalLight.position.set(0, 1, 0);
-		this.scene.add(this.directionalLight);
+
+		// create fallback ambient light to use while HDR environment map is loading
+		if (options.defaultLights !== false) {
+			this.scene.add(this.fallbackAmbientLight);
+			this.scene.add(this.directionalLight);
+		}
 
 		// load HDR environment map
 		if (options.defaultEnvironment !== false) {
@@ -230,6 +239,18 @@ export class PhysicallyBasedViewer<
 		);
 		this.effectComposer.addPass(this.renderPass);
 		this.effectComposer.addPass(this.bloomPass);
+
+		// Enable shadows
+        if (options.shadows !== false) {
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = PCFSoftShadowMap;
+            // renderer.shadowMap.type = VSMShadowMap;
+            this.directionalLight.castShadow = true;
+            this.directionalLight.shadow.mapSize.width = 1024;
+            this.directionalLight.shadow.mapSize.height = 1024;
+            this.directionalLight.shadow.camera.near = 0.5;
+            this.directionalLight.shadow.camera.far = 500;
+        }
 
 		// dev mode
 		if (this.devMode) {
