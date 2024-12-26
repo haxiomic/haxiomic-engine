@@ -20,9 +20,6 @@ export class EventEmitter<Payload = undefined, E = EventEmitter.Emitted<Payload>
         listener: (event: E) => void
     }>()
 
-    /**
-     * Higher priority listeners are called first
-     */
     public addListener(listener: (event: E) => void, priority: number = 0) {
         let eventObj = {
             priority,
@@ -34,10 +31,7 @@ export class EventEmitter<Payload = undefined, E = EventEmitter.Emitted<Payload>
         }
         return eventObj
     }
-
-    /**
-     * Alias for addListener, higher priority listeners are called first
-     */
+    /** Alias for addListener */
     public on(listener: (event: E) => void, priority?: number) {
         return this.addListener(listener, priority);
     }
