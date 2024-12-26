@@ -41,6 +41,7 @@ export type PhysicallyBasedViewerOptions<Controls extends {
 	toneMappingExposure?: number,
 	shadows?: boolean,
 	defaultLights?: boolean,
+	pixelRatio?: number,
 }
 
 /**
@@ -62,6 +63,7 @@ export class PhysicallyBasedViewer<
 	readonly modelRoot = new Object3D();
 
 	controls: Controls;
+	pixelRatio = window.devicePixelRatio;
 
 	readonly events = {
 		beforeUpdate: new EventEmitter<{
@@ -110,6 +112,17 @@ export class PhysicallyBasedViewer<
 
 	protected renderTargetStore = new RenderTargetStore();
 
+	get postProcessMsaaSamples() {
+		return this.effectComposerTarget.samples;
+	}
+	set postProcessMsaaSamples(samples: number) {
+		let samplesChanged = samples !== this.effectComposerTarget.samples;
+		if (!samplesChanged) return;
+		this.effectComposerTarget.samples = samples;
+		this.effectComposer.reset(this.effectComposerTarget);
+	}
+	protected effectComposerTarget: WebGLRenderTarget;
+
 	dev: {
 		root: Object3D,
 		textureVisualizer: TextureVisualizer,
@@ -120,6 +133,7 @@ export class PhysicallyBasedViewer<
 	constructor(
 		options: PhysicallyBasedViewerOptions<Controls>
 	) {
+		this.pixelRatio = options.pixelRatio ?? this.pixelRatio;
 		this.postProcessingEnabled = options.postProcessing?.enabled ?? this.postProcessingEnabled;
 		this.toneMapping = options.toneMapping ?? this.toneMapping;
 		this.toneMappingExposure = options.toneMappingExposure ?? this.toneMappingExposure;
@@ -212,7 +226,7 @@ export class PhysicallyBasedViewer<
 		}
 
 		// post processing
-		let effectComposerTarget = new WebGLRenderTarget(1, 1, {
+		this.effectComposerTarget = new WebGLRenderTarget(1, 1, {
 			anisotropy: 0,
 			colorSpace: NoColorSpace,
 			depthBuffer: true,
@@ -228,7 +242,7 @@ export class PhysicallyBasedViewer<
 			wrapT: undefined,
 		})
 
-		this.effectComposer = new EffectComposer(renderer, effectComposerTarget);
+		this.effectComposer = new EffectComposer(renderer, this.effectComposerTarget);
 
 		this.renderPass = new RenderPass(this.scene, this.camera);
 		this.bloomPass = new UnrealBloomPass(
@@ -264,12 +278,7 @@ export class PhysicallyBasedViewer<
 			});
 			renderingFolder.add(this, 'postProcessingEnabled');
 			renderingFolder.add(this, 'toneMappingExposure', 0, 10);
-
-			renderingFolder.add(effectComposerTarget, 'samples', 0, renderer.capabilities.maxSamples, 1).name('MSAA').onChange((samples: number) => {
-				let updatedTarget = effectComposerTarget.clone();
-				updatedTarget.samples = samples;
-				this.effectComposer.reset(updatedTarget);
-			});
+			renderingFolder.add(this, 'postProcessMsaaSamples', 0, renderer.capabilities.maxSamples, 1).name('MSAA');
 
 			// bloom
 			let bloomFolder = renderingFolder.addFolder('Bloom');
@@ -394,9 +403,9 @@ export class PhysicallyBasedViewer<
 		this.dev?.stats.update();
 
 		let canvas = renderer.domElement;
-		let pixelRatio = window.devicePixelRatio;
-		let targetWidth = Math.floor(canvas.clientWidth * pixelRatio);
-		let targetHeight = Math.floor(canvas.clientHeight * pixelRatio);
+		
+		let targetWidth = Math.floor(canvas.clientWidth * this.pixelRatio);
+		let targetHeight = Math.floor(canvas.clientHeight * this.pixelRatio);
 
 		if ((canvas.width !== targetWidth) || (canvas.height !== targetHeight)) {
 			// canvas.width = targetWidth;
