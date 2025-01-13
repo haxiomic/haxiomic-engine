@@ -1,0 +1,31 @@
+{
+  "name": "haxiomic-engine",
+  "version": "1.0.0",
+  "description": "Haxiomic's personal library, focused interactive projects in three.js",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/haxiomic/engine-ts.git"
+  },
+  "keywords": [
+    "haxiomic",
+    "three.js",
+    "engine"
+  ],
+  "author": "George Corney",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/haxiomic/engine-ts/issues"
+  },
+  "homepage": "https://github.com/haxiomic/engine-ts#readme",
+  "peerDependencies": {
+    "three": "^0.171.0",
+    "react": "^18.2.0"
+  }
+}
