@@ -247,7 +247,7 @@ export namespace Rendering {
 
 	export function generateMipmaps(renderer: WebGLRenderer, texture: Texture) {
 		let gl = renderer.getContext();
-		let webglTexture = renderer.properties.get(texture).__webglTexture;
+		let webglTexture = (renderer.properties.get(texture) as any).__webglTexture;
 		renderer.state.bindTexture(gl.TEXTURE_2D, webglTexture);
 		gl.generateMipmap(gl.TEXTURE_2D);
 	}

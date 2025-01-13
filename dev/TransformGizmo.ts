@@ -1,5 +1,5 @@
 import { BackSide, BufferGeometry, Camera, Color, ColorRepresentation, ConeGeometry, CylinderGeometry, Matrix4, Mesh, MeshBasicMaterial, Object3D, Plane, Quaternion, Ray, Raycaster, Scene, TorusGeometry, Vector3, Vector4, WebGLRenderer } from "three";
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EventEmitter } from "../EventEmitter";
 import { Animator } from "../animation/Animator";
 import { Spring } from "../animation/Spring";

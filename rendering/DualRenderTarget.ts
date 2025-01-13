@@ -1,4 +1,4 @@
-import { Texture, Uniform, WebGLRenderer, WebGLRenderTarget, WebGLRenderTargetOptions } from "three";
+import { RenderTargetOptions, Texture, Uniform, WebGLRenderer, WebGLRenderTarget } from "three";
 import { Rendering } from "./Rendering";
 
 export class DualRenderTarget {
@@ -15,12 +15,12 @@ export class DualRenderTarget {
         return this._height;
     }
 
-    options: WebGLRenderTargetOptions;
+    options: RenderTargetOptions;
 
     a: WebGLRenderTarget;
     b: WebGLRenderTarget;
 
-    constructor(private renderer: WebGLRenderer, width: number, height: number, options: WebGLRenderTargetOptions) {
+    constructor(private renderer: WebGLRenderer, width: number, height: number, options: RenderTargetOptions) {
         this.options = options;
         this.a = new WebGLRenderTarget(width, height, options);
         this.b = new WebGLRenderTarget(width, height, options);
@@ -29,7 +29,7 @@ export class DualRenderTarget {
         this._height = height;
     }
 
-    setOptions(newOptions: WebGLRenderTargetOptions) {
+    setOptions(newOptions: RenderTargetOptions) {
         this.options = newOptions;
         // recreate the render targets
         this.resize(this.width, this.height);

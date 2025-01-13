@@ -144,6 +144,10 @@ export class DevUI {
 		return DevUI.ui.addFolder(name);
 	}
 
+	static addColor(object: object, property: string) {
+		return DevUI.ui.addColor(object, property);
+	}
+
 	static addMaterial(material: Material, name: string) {
 		let materialFolder = DevUI.addFolder(name);
 
@@ -209,7 +213,7 @@ export class DevUI {
 			if ('sheenColor' in material) materialFolder.addColor(material, 'sheenColor');
 		}
 
-		if ('bumpScale' in material) materialFolder.add(material, 'bumpScale', -.01, .01);
+		if ('bumpScale' in material) materialFolder.add(material, 'bumpScale', -.01, 10);
 
 		return materialFolder;
 	}

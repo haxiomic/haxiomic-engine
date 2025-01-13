@@ -1,6 +1,6 @@
 import { BufferGeometry, Float32BufferAttribute, Material, Mesh } from 'three';
 
-export default class ClipSpaceTriangle extends Mesh {
+export default class ClipSpaceTriangle<TMaterial extends Material> extends Mesh<BufferGeometry, TMaterial> {
 
 	static globalGeometry = (() => {
 		let geom = new BufferGeometry();
@@ -17,7 +17,7 @@ export default class ClipSpaceTriangle extends Mesh {
 		return geom;
 	})();
 
-	constructor(material?: Material) {
+	constructor(material?: TMaterial) {
 		super(ClipSpaceTriangle.globalGeometry, material);
 		this.frustumCulled = false;
 		this.castShadow = false;

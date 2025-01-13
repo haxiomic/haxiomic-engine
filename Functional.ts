@@ -25,3 +25,19 @@ export function Switch<T extends string | number, Ret>(
 		}
 	}
 }
+
+export function Try<T>(fn: () => T, defaultValue: T): T {
+	try {
+		return fn();
+	} catch (e) {
+		return defaultValue;
+	}
+}
+
+export function TryCatch<T>(fn: () => T, onCatch: (e: unknown) => T): T {
+	try {
+		return fn();
+	} catch (e) {
+		return onCatch(e);
+	}
+}
