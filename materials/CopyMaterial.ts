@@ -12,7 +12,7 @@ export class CopyMaterial extends RawShaderMaterial {
 	constructor() {
 		super({
 			uniforms: {},
-			vertexShader: `
+			vertexShader: /*glsl*/`
 				attribute vec2 position;
 				varying vec2 vUv;
 				void main() {
@@ -20,7 +20,7 @@ export class CopyMaterial extends RawShaderMaterial {
 					gl_Position = vec4(position, 0., 1.);
 				}
 			`,
-			fragmentShader: `
+			fragmentShader: /*glsl*/`
 				precision highp float;
 				uniform sampler2D source;
 				varying vec2 vUv;

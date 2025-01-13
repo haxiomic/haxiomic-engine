@@ -1,4 +1,4 @@
-import { ClampToEdgeWrapping, HalfFloatType, LinearEncoding, LinearFilter, LinearMipMapLinearFilter, NearestFilter, NoColorSpace, RawShaderMaterial, RepeatWrapping, RGBAFormat, Texture, Uniform, Vector3, WebGLRenderer, WebGLRenderTarget, WebGLRenderTargetOptions } from "three";
+import { ClampToEdgeWrapping, HalfFloatType, LinearFilter, LinearMipMapLinearFilter, NearestFilter, NoColorSpace, RawShaderMaterial, RenderTargetOptions, RepeatWrapping, RGBAFormat, Texture, Uniform, Vector3, WebGLRenderer, WebGLRenderTarget } from "three";
 import { Rendering } from "../rendering/Rendering";
 import { DualRenderTarget } from "../rendering/DualRenderTarget";
 
@@ -56,8 +56,8 @@ export class FluidSimulation {
     readonly pressureSolveShader: PressureSolve;
     readonly pressureGradientSubtractShader: PressureGradientSubtract;
 
-    readonly textureOptions: WebGLRenderTargetOptions;
-    readonly textureOptionsNearest: WebGLRenderTargetOptions;
+    readonly textureOptions: RenderTargetOptions;
+    readonly textureOptionsNearest: RenderTargetOptions;
 
     timeScale = 1.0;
 

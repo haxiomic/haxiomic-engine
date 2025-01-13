@@ -1,10 +1,10 @@
-	import { ACESFilmicToneMapping, AmbientLight, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, VSMShadowMap, WebGLRenderer, WebGLRenderTarget } from "three";
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { GLTF, GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
-import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader";
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass';
+import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, Matrix4, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, Vector3, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { Console } from "./Console";
 import { DevUI as Dev } from "./dev/DevUI";
 import { EnvironmentProbes } from "./dev/EnvironmentProbes";
@@ -17,7 +17,7 @@ import { ObjectUtils } from "./ObjectUtils";
 import { Rendering } from "./rendering/Rendering";
 import RenderTargetStore from "./rendering/RenderTargetStore";
 // three js stats
-import Stats from 'three/examples/jsm/libs/stats.module';
+import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { TransformGizmo } from "./dev/TransformGizmo";
 
 export type PhysicallyBasedViewerOptions<Controls extends {
@@ -25,10 +25,12 @@ export type PhysicallyBasedViewerOptions<Controls extends {
 	update?: (dt_s: number) => void,
 } = OrbitControls> = {
 	canvas: HTMLCanvasElement,
+	name?: string,
 	camera?: PerspectiveCamera,
 	devMode?: boolean,
 	controls?: Controls | ((camera: Camera, interactionManager: InteractionManager) => Controls),
 	defaultEnvironment?: boolean,
+	defaultLights?: boolean,
 	postProcessing?: {
 		enabled?: boolean,
 		bloom?: boolean,
@@ -37,11 +39,16 @@ export type PhysicallyBasedViewerOptions<Controls extends {
 		bloomThreshold?: number,
 		msaaSamples?: number,
 	},
+	/** explicitly provide parameters to new WebGLRenderer */
+	webglRendererParameters?: WebGLRendererParameters,
 	toneMapping?: ToneMapping,
 	toneMappingExposure?: number,
 	shadows?: boolean,
-	defaultLights?: boolean,
 	pixelRatio?: number,
+	/** when true, scene.background is set to the environment texture when it is loaded */
+	changeBackgroundWithEnvironment?: boolean,
+	/** when true, camera position is saved to local storage and restored next load */
+	cacheCameraTransform?: boolean,
 }
 
 /**
@@ -53,14 +60,12 @@ export class PhysicallyBasedViewer<
 	} = OrbitControls
 > {
 
+	readonly name: string;
+	readonly logTag: string;
 	readonly canvas: HTMLCanvasElement;
 	readonly renderer: WebGLRenderer;
 	readonly scene = new Scene();
 	camera: PerspectiveCamera;
-	/**
-	 * Models are added to this root object so that they can be easily removed
-	 */
-	readonly modelRoot = new Object3D();
 
 	controls: Controls;
 	pixelRatio = window.devicePixelRatio;
@@ -133,6 +138,8 @@ export class PhysicallyBasedViewer<
 	constructor(
 		options: PhysicallyBasedViewerOptions<Controls>
 	) {
+		this.name = options.name ?? 'PhysicallyBasedViewer';
+		this.logTag = `<magenta><b>${this.name}<//>`;
 		this.pixelRatio = options.pixelRatio ?? this.pixelRatio;
 		this.postProcessingEnabled = options.postProcessing?.enabled ?? this.postProcessingEnabled;
 		this.toneMapping = options.toneMapping ?? this.toneMapping;
@@ -153,21 +160,22 @@ export class PhysicallyBasedViewer<
 			alpha: true,
 			antialias: true,
 			powerPreference: 'high-performance',
+			...options.webglRendererParameters,
 		});
 
 		// debug shaders
 		renderer.debug.onShaderError = this.onShaderError;
 
 		if (this.devMode) {
-			// Console.log(`<magenta><b>PhysicallyBasedViewer</>: dev mode active<//> <b>three v${REVISION}</>`);
-			// console.log(`Capabilities`, renderer.capabilities);
+			Console.log(`${this.logTag}: <b>three v${REVISION}</>, <cyan>dev mode active<//>`);
+			console.log(`Capabilities`, renderer.capabilities);
 			this.renderLayers.enable(Layer.Developer);
 		}
 
 		let context = renderer.getContext();
 		if (`drawingBufferColorSpace` in context) {
 			// context.drawingBufferColorSpace = 'display-p3';
-			// Console.log('<b>PhysicallyBasedViewer</b>: Using display-p3 color space');
+			// Console.log(`${this.logTag}: Using display-p3 color space`);
 		}
 
 		// PBR setup
@@ -190,7 +198,7 @@ export class PhysicallyBasedViewer<
 			orbitControls.dampingFactor = 0.1;
 			orbitControls.rotateSpeed = 1.1;
 			orbitControls.zoomSpeed = 0.5;
-			orbitControls.maxDistance = 10;
+			orbitControls.maxDistance = Infinity;
 			orbitControls.addEventListener('start', () => {
 				canvas.style.cursor = 'grabbing';
 			});
@@ -208,8 +216,6 @@ export class PhysicallyBasedViewer<
 
 		this.camera.position.z = 2;
 
-		this.scene.add(this.modelRoot);
-
 		// directional light for sun-lit geometry shading
 		this.directionalLight = new DirectionalLight(0xffffff, 3.0);
 		this.directionalLight.position.set(0, 1, 0);
@@ -218,6 +224,13 @@ export class PhysicallyBasedViewer<
 		if (options.defaultLights !== false) {
 			this.scene.add(this.fallbackAmbientLight);
 			this.scene.add(this.directionalLight);
+		}
+
+		// Sync scene background with environment
+		if (options.changeBackgroundWithEnvironment === true) {
+			this.events.environmentChanged.addListener((e) => {
+				e.scene.background = e.environment;
+			});
 		}
 
 		// load HDR environment map
@@ -230,7 +243,6 @@ export class PhysicallyBasedViewer<
 			anisotropy: 0,
 			colorSpace: NoColorSpace,
 			depthBuffer: true,
-			depthTexture: undefined,
 			format: RGBAFormat,
 			generateMipmaps: false,
 			magFilter: NearestFilter,
@@ -266,15 +278,49 @@ export class PhysicallyBasedViewer<
             this.directionalLight.shadow.camera.far = 500;
         }
 
+		// Camera position caching
+		if (options.cacheCameraTransform) {
+			let cameraPositionKey = `${this.name}_cameraPosition`;
+			let cameraRotationKey = `${this.name}_cameraRotation`;
+			let cameraPosition = localStorage.getItem(cameraPositionKey);
+			let cameraRotation = localStorage.getItem(cameraRotationKey);
+			if (cameraPosition) {
+				let position = JSON.parse(cameraPosition);
+				this.camera.position.fromArray(position);
+			}
+			if (cameraRotation) {
+				let rotation = JSON.parse(cameraRotation);
+				this.camera.rotation.fromArray(rotation);
+			}
+
+			// save the camera position to local storage
+			let _lastTransform = new Matrix4();
+			let _lastSaveTimestamp_s = NaN;
+			let cacheInterval_s = 0.1;
+			this.events.beforeRender.on(({ camera, t_s }) => {
+				let timeSinceLastSave_s = t_s - _lastSaveTimestamp_s;
+				let needsSave = timeSinceLastSave_s > cacheInterval_s || isNaN(_lastSaveTimestamp_s);
+				// check if the camera has moved
+				if (needsSave && !_lastTransform.equals(camera.matrixWorld)) {
+					_lastTransform.copy(camera.matrixWorld);
+					localStorage.setItem(cameraPositionKey, JSON.stringify(camera.position.toArray()));
+					localStorage.setItem(cameraRotationKey, JSON.stringify(camera.rotation.toArray()));
+					_lastSaveTimestamp_s = t_s;
+				}
+			});
+		}
+
 		// dev mode
 		if (this.devMode) {
 			let renderingFolder = Dev.addFolder('Rendering');
 			renderingFolder.close();
+			renderingFolder.add(this, 'pixelRatio', 0.1, 3, 0.1);
 			renderingFolder.add(this, 'toneMapping', {
 				NoToneMapping,
 				LinearToneMapping,
 				CineonToneMapping,
 				ACESFilmicToneMapping,
+				AgXToneMapping,
 			});
 			renderingFolder.add(this, 'postProcessingEnabled');
 			renderingFolder.add(this, 'toneMappingExposure', 0, 10);
@@ -315,28 +361,31 @@ export class PhysicallyBasedViewer<
 
 			// add directional light visualizer and controls
 			let directionalLight = this.directionalLight;
-			let directionalLightVisualizer = new DirectionalLightHelper(directionalLight, 0.5);
-			directionalLightVisualizer.layers.set(Layer.Developer);
-			devRoot.add(directionalLightVisualizer);
 
-			let directionalLightFolder = Dev.addFolder('Directional Light');
-			directionalLightFolder.add(directionalLight, 'intensity', 0, 10);
-			directionalLightFolder.addColor(directionalLight, 'color');
-			directionalLightFolder.close();
+			if (directionalLight.parent != null) {
+				let directionalLightVisualizer = new DirectionalLightHelper(directionalLight, 0.5);
+				directionalLightVisualizer.layers.set(Layer.Developer);
+				devRoot.add(directionalLightVisualizer);
 
-			let directionalLightGizmo = new TransformGizmo(directionalLight, {
-				rotation: false,
-			});
-			directionalLightGizmo.onChange = () => {
-				directionalLightVisualizer.update();
+				let directionalLightFolder = Dev.addFolder('Directional Light');
+				directionalLightFolder.add(directionalLight, 'intensity', 0, 10);
+				directionalLightFolder.addColor(directionalLight, 'color');
+				directionalLightFolder.close();
+
+				let directionalLightGizmo = new TransformGizmo(directionalLight, {
+					rotation: false,
+				});
+				directionalLightGizmo.onChange = () => {
+					directionalLightVisualizer.update();
+				}
+				directionalLightGizmo.traverse((node) => {
+					node.layers.disable(Layer.Default);
+					node.layers.enable(Layer.Developer);
+				});
+				directionalLightGizmo.events.change.addListener((e) => { });
+				directionalLightGizmo.scale.setScalar(0.4);
+				directionalLight.add(directionalLightGizmo);
 			}
-			directionalLightGizmo.traverse((node) => {
-				node.layers.disable(Layer.Default);
-				node.layers.enable(Layer.Developer);
-			});
-			directionalLightGizmo.events.change.addListener((e) => { });
-			directionalLightGizmo.scale.setScalar(0.4);
-			directionalLight.add(directionalLightGizmo);
 
 			let grid = this.dev.grid;
 			interactionManager.events.keyDown.addListener((event) => {
@@ -470,33 +519,8 @@ export class PhysicallyBasedViewer<
 		}
 	}
 
-	loadModel = (
-		url: string,
-		onLoad?: (gltf: GLTF) => void,
-		onProgress?: (event: ProgressEvent) => void,
-		onError?: (event: unknown) => void,
-	) => {
-		this.gltfLoader.load(
-			url,
-			gltf => {
-				console.log('gltf ready', gltf)
-				this.modelRoot.add(gltf.scene);
-				onLoad?.(gltf);
-			},
-			onProgress,
-			(errorEvent) => {
-				console.error(errorEvent)
-				onError?.(errorEvent);
-			}
-		);
-	}
-
-	clearModel = () => {
-		this.modelRoot.clear();
-	}
-
 	dispose = () => {
-		Console.log('<magenta><b>PhysicallyBasedViewer</>: dispose()</>');
+		Console.log(`${this.logTag}: dispose()</>`);
 		this.renderer.dispose();
 		window.cancelAnimationFrame(this.frameLoopHandle);
 		this.interactionManager.removeEventListeners();
@@ -575,6 +599,7 @@ function createDomEventProxy(interactionManager: InteractionManager, priority?: 
 	// we remap pointer up to global pointer up to catch edge cases, for example, right click drag out of browser window
 	eventMap.pointerup = eventMap.globalpointerup;
 	return {
+		getRootNode: () => interactionManager.el.getRootNode(),
 		addEventListener: (type: string, listener: (event: Event) => void, options: {}) => {
 			let eventEmitter: EventEmitter<Event> = (eventMap as any)[type.toLowerCase()];
 			if (eventEmitter != null) {

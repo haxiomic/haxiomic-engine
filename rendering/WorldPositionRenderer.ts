@@ -36,6 +36,8 @@ export class WorldPositionRenderer {
     object: Object3D | null = null;
     depthPrepass: boolean = false;
 
+    private replacementParent: Object3D;
+
     constructor(
         renderer: WebGLRenderer,
         width: number,
@@ -63,6 +65,8 @@ export class WorldPositionRenderer {
         });
 
         this.scene = new Scene();
+        this.replacementParent = new Object3D();
+        this.scene.add(this.replacementParent);
         this.shaderMaterial = new ShaderMaterial({
             uniforms: {},
             vertexShader: /*glsl*/`
@@ -118,7 +122,16 @@ export class WorldPositionRenderer {
 
         if (object != null) {
             var parent = object.parent;
-            scene.add(object);
+            
+            parent?.updateWorldMatrix(true, false);
+
+            let replacementParent = this.replacementParent;
+            replacementParent.matrixAutoUpdate = false;
+            if (parent?.matrixWorld) {
+                replacementParent.matrix.copy(parent.matrixWorld);
+            }
+
+            replacementParent.add(object);
 
             var maskBefore = camera.layers.mask;
 
@@ -135,7 +148,7 @@ export class WorldPositionRenderer {
             renderer.render(scene, camera);
             camera.layers.mask = maskBefore;
 
-            scene.remove(object);
+            replacementParent.remove(object);
             if (parent != null) {
                 parent.add(object);
             }

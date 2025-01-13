@@ -110,11 +110,20 @@ export class RingBufferTexture {
         // ensure the texture is initialized
         renderer.initTexture(this.texture);
 
+        // older three.js interface
+        // renderer.copyTextureToTexture(
+        //     writePosition,
+        //     rowData,
+        //     this.texture,
+        //     0,
+        // );
+
+        // three r171 interface
         renderer.copyTextureToTexture(
-            writePosition,
             rowData,
             this.texture,
-            0,
+            null,
+            writePosition
         );
 
         // increment the write row

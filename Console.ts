@@ -82,7 +82,8 @@ export namespace Console {
 				if (typeof require === 'undefined') {
 					printlnFormatted(logPrefix + JSON.stringify(arg), OutputStream.Log);
 				} else {
-					printlnFormatted(logPrefix + require('util').inspect(arg, { depth: null, colors: true }), OutputStream.Log);
+					let r = require; // alias to avoid esbuild error
+					printlnFormatted(logPrefix + r('util').inspect(arg, { depth: null, colors: true }), OutputStream.Log);
 				}
 			} else {
 				printlnFormatted(logPrefix + arg, OutputStream.Log);
