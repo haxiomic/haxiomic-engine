@@ -1,9 +1,7 @@
 {
-    "include": [
-        "./**/*",
-    ],
-    "compilerOptions": {
-        "strict": true,
-        "target": "ES6",
-    }
+  "compilerOptions": {
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
+    "strict": true
+  }
 }

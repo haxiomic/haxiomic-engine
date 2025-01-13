@@ -2,10 +2,7 @@
   "name": "haxiomic-engine",
   "version": "1.0.0",
   "description": "Haxiomic's personal library, focused interactive projects in three.js",
-  "main": "index.js",
-  "directories": {
-    "lib": "lib"
-  },
+  "types": "./",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
