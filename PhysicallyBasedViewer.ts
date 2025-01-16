@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, Matrix4, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, Vector3, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
+import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, Matrix4, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
@@ -256,14 +256,17 @@ export class PhysicallyBasedViewer<
 
 		this.effectComposer = new EffectComposer(renderer, this.effectComposerTarget);
 
+		// Scene Render Pass
 		this.renderPass = new RenderPass(this.scene, this.camera);
+		this.effectComposer.addPass(this.renderPass);1
+
+		// Bloom Pass
 		this.bloomPass = new UnrealBloomPass(
 			new Vector2(1, 1),
 			options.postProcessing?.bloomStrength ?? 0.25,
 			options.postProcessing?.bloomRadius ?? 0.1,
 			options.postProcessing?.bloomThreshold ?? 0.0,
 		);
-		this.effectComposer.addPass(this.renderPass);
 		this.effectComposer.addPass(this.bloomPass);
 
 		// Enable shadows
