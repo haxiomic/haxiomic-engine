@@ -9,7 +9,6 @@ const compileTimePlugin = (esbuildConfig = {}) => ({
   name: 'compile-time',
   setup(build) {
 
-    // handle resolving import 'inline-worker!*' and import '*.worker.js'
     // we also support worker-loader! prefix for compatibility with webpack
     build.onResolve({filter: /\.(compiletime|compile-time)\.(js|mjs|ts)$/}, args => {
         // remove loader prefix and mark the namespace so we can handle it in onLoad
