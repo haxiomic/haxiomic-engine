@@ -5,6 +5,7 @@ export type WebSocketRobustOptions = {
 	 * Interval (milliseconds) to wait before attempting to reconnect after an error
 	 */
 	errorReconnectInterval_ms: number,
+
 	/**
 	 * Timeout (milliseconds) used when waiting on the websocket to open before considering it failed (see awaitOpen()). Also used when waiting for the websocket to close before creating a new one.
 	 */

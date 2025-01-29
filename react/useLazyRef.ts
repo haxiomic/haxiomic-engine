@@ -4,7 +4,7 @@ export function useLazyRef<T>(create: () => T) {
 	const ref = useRef<T | null>(null);
 	return {
 		get current() {
-			return ref.current = ref.current ?? create();;
+			return ref.current = ref.current ?? create();
 		}
 	};
 }

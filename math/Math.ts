@@ -12,3 +12,15 @@ export function smoothstep(edge0: number, edge1: number, x: number): number {
     t = t * t * (3 - 2 * t);
     return t;
 }
+
+export function clamp(v: number, min: number, max: number) {
+	return v < min ? min : (v > max ? max : v);
+}
+
+export function fract(x: number) { 
+	return x - Math.floor(x);
+}
+
+export function mod(a: number, b: number) {
+    return ((a % b) + b) % b;
+}

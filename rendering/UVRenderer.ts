@@ -45,8 +45,6 @@ export class UVRenderer extends WorldPositionRenderer {
 
 			void main() {
 				gl_FragColor = vec4(vUv, 1.0);
-
-                gl_FragColor.b = 1.0; // @! todo: remove this
 			}
 		`;
 		this.shaderMaterial.vertexColors = true;

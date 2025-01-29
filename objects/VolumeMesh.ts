@@ -136,7 +136,6 @@ export class VolumeMeshMaterial<T extends Record<string, IUniform>> extends Shad
             this.uniforms.near.value = nearCenter_clip.z;
 
 
-
             // coordinate transformation uniforms
             // we can assume matrixWorld is updated
             // position_cameraSpace = inverse(modelMatrix) * cameraMatrix * position_cameraSpace
