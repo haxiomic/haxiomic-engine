@@ -142,7 +142,6 @@ export class FluidSimulation {
     }
 
     public step(
-        t_s: number,
         dt_s: number,
         applyForces: (velocityTarget: WebGLRenderTarget) => void,
         applyColor: (colorTarget: WebGLRenderTarget) => void
