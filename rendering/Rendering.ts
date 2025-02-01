@@ -36,12 +36,7 @@ export namespace Rendering {
 		renderer.setClearColor(_tempGlobalState.clearColor.rgb, _tempGlobalState.clearColor.alpha);
 	}
 
-	/**
-	 * Render to texture operation without changing global state
-	 * 
-	 * This should be used instead of `renderer.render()`
-	 */
-	export function renderPass(renderer: WebGLRenderer, options: {
+	export type RenderPassOptions = {
 		/**
 		* Render to target or null to render to canvas
 		*/
@@ -49,48 +44,55 @@ export namespace Rendering {
 		scene: Scene,
 		camera: Camera,
 		/**
-		 * Default: `NoToneMapping`
-		 */
+		* Default: `NoToneMapping`
+		*/
 		toneMapping?: ToneMapping,
 		/**
-		 * Default: `1.0`
-		 */
+		* Default: `1.0`
+		*/
 		toneMappingExposure?: number,
 		/**
-		 * If provided the target will be cleared with this color before rendering
-		 * Otherwise the target will not be cleared
-		 */
+		* If provided the target will be cleared with this color before rendering
+		* Otherwise the target will not be cleared
+		*/
 		clearColor: {
 			rgb: ColorRepresentation,
 			alpha: number,
 		} | false,
 		/**
-		 * If provided the target will be cleared with this depth before rendering
-		 * Otherwise the target will not be cleared
-		 */
+		* If provided the target will be cleared with this depth before rendering
+		* Otherwise the target will not be cleared
+		*/
 		clearDepth: boolean,
 		/**
-		 * If provided the target will be cleared with this stencil before rendering
-		 * Otherwise the target will not be cleared
-		 */
+		* If provided the target will be cleared with this stencil before rendering
+		* Otherwise the target will not be cleared
+		*/
 		clearStencil: boolean,
 		/**
-		 * Override viewport, by default it will spans the entire target
-		 */
+		* Override viewport, by default it will spans the entire target
+		*/
 		viewport?: Vector4,
 		/**
-		 * If provided the scene will be rendered with this material
-		 */
+		* If provided the scene will be rendered with this material
+		*/
 		overrideMaterial?: Material,
 		/**
-		 * Override camera layers mask
-		 */
+		* Override camera layers mask
+		*/
 		layers?: Layers,
 		/**
-		 * Restore global state after rendering (default: `false`)
-		 */
+		* Restore global state after rendering (default: `false`)
+		*/
 		restoreGlobalState?: boolean,
-	}) {
+	}
+
+	/**
+	 * Render to texture operation without changing global state
+	 * 
+	 * This should be used instead of `renderer.render()`
+	 */
+	export function renderPass(renderer: WebGLRenderer, options: RenderPassOptions) {
 		let { target, scene, camera, viewport, clearColor, clearDepth, clearStencil, overrideMaterial, layers } = options;
 
 		// save global state
@@ -101,7 +103,7 @@ export namespace Rendering {
 		let _toneMapping = renderer.toneMapping;
 		let _toneMappingExposure = renderer.toneMappingExposure;
 		let _layersMask = camera.layers.mask;
-		
+
 		// change global state
 		renderer.autoClear = false;
 		renderer.toneMapping = options.toneMapping ?? NoToneMapping;
@@ -168,27 +170,28 @@ export namespace Rendering {
 	};
 	fragmentPassScene.add(fragmentPassMesh);
 
-	export function shaderPass(renderer: WebGLRenderer, options: {
+	export type ShaderPassOptions = {
 		target: WebGLRenderTarget | null,
 		shader: ShaderMaterial,
 		restoreGlobalState: boolean,
 		viewport?: Vector4,
 		/**
-		 * Clears magenta if not provided, don't clear if null
-		 */
+		* Clears magenta if not provided, don't clear if null
+		*/
 		clearColor?: {
 			rgb: ColorRepresentation,
 			alpha: number,
 		} | false,
 		/**
-		 * Default: `true`
-		 */
+		* Default: `true`
+		*/
 		clearDepth?: boolean,
 		/**
-		 * Default: `false`
-		 */
+		* Default: `false`
+		*/
 		clearStencil?: boolean,
-	}) {
+	}
+	export function shaderPass(renderer: WebGLRenderer, options: ShaderPassOptions) {
 		renderPass(renderer, {
 			target: options.target,
 			camera: fragmentPassCamera,
@@ -203,15 +206,17 @@ export namespace Rendering {
 		});
 	}
 
+	export type BlitOptions = {
+		source: Texture,
+		target: WebGLRenderTarget | null,
+		restoreGlobalState: boolean,
+	}
+
 	const copyMaterial = new CopyMaterial();
 	/**
 	 * Copy texture to target using fragment shader pass
 	 */
-	export function blit(renderer: WebGLRenderer, options: {
-		source: Texture,
-		target: WebGLRenderTarget | null,
-		restoreGlobalState: boolean,
-	}) {
+	export function blit(renderer: WebGLRenderer, options: BlitOptions) {
 		copyMaterial.uniforms.source.value = options.source;
 		shaderPass(renderer, {
 			target: options.target,
@@ -224,8 +229,7 @@ export namespace Rendering {
 		copyMaterial.uniforms.source.value = null;
 	}
 
-	const emptyScene = new Scene();
-	export function clear(renderer: WebGLRenderer, options: {
+	export type ClearOptions = {
 		target: WebGLRenderTarget | null,
 		clearColor: {
 			rgb: ColorRepresentation,
@@ -233,7 +237,10 @@ export namespace Rendering {
 		},
 		clearDepth: boolean,
 		clearStencil: boolean,
-	}) {
+	}
+
+	const emptyScene = new Scene();
+	export function clear(renderer: WebGLRenderer, options: ClearOptions) {
 		renderPass(renderer, {
 			target: options.target,
 			camera: fragmentPassCamera,
