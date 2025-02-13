@@ -30,7 +30,7 @@ export class DualRenderTarget {
     }
 
     setOptions(newOptions: RenderTargetOptions) {
-        this.options = newOptions;
+        this.options = {...this.options, ...newOptions};
         // recreate the render targets
         this.resize(this.width, this.height);
     }

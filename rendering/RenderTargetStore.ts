@@ -1,4 +1,4 @@
-import { MagnificationTextureFilter, MathUtils, NoColorSpace, RGBAFormat, TextureDataType, WebGLRenderTarget } from 'three';
+import { AnyPixelFormat, ClampToEdgeWrapping, MagnificationTextureFilter, MathUtils, NoColorSpace, RGBAFormat, TextureDataType, WebGLRenderTarget, Wrapping } from 'three';
 
 export enum PowerOfTwoMode {
 	None,
@@ -29,6 +29,9 @@ export default class RenderTargetStore {
 			type: TextureDataType,
 			filtering: MagnificationTextureFilter,
 			msaaSamples?: number,
+			wrapS?: Wrapping,
+			wrapT?: Wrapping,
+			format?: AnyPixelFormat,
 		},
 		onCreate?: (target: RenderTarget) => void,
 	) {
@@ -69,9 +72,11 @@ export default class RenderTargetStore {
 					stencilBuffer: false,
 					depthBuffer: options.depthBuffer ?? false,
 					type: options.type,
-					format: RGBAFormat,
+					format: options.format ?? RGBAFormat,
 					minFilter: options.filtering,
 					magFilter: options.filtering,
+					wrapS: options.wrapS ?? ClampToEdgeWrapping,
+					wrapT: options.wrapT ?? ClampToEdgeWrapping,
 					samples: options.msaaSamples ?? 0,
 				}) as RenderTarget;
 				target.name = name;
@@ -80,9 +85,11 @@ export default class RenderTargetStore {
 			}
 			else {
 				target.texture.type = options.type;
-				target.texture.format = RGBAFormat;
+				target.texture.format = options.format ?? RGBAFormat;
 				target.texture.minFilter = options.filtering;
 				target.texture.magFilter = options.filtering;
+				target.texture.wrapS = options.wrapS ?? ClampToEdgeWrapping;
+				target.texture.wrapT = options.wrapT ?? ClampToEdgeWrapping;
 				target.depthBuffer = options.depthBuffer ?? false;
 				if (
 					target.width != width ||
