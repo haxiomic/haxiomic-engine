@@ -37,7 +37,7 @@ export namespace Rendering {
 	}
 
 	export function restoreGlobalState(renderer: WebGLRenderer) {
-		renderer.setRenderTarget(_tempGlobalState.renderTarget, _tempGlobalState.activeMipmapLevel, _tempGlobalState.activeCubeFace);
+		renderer.setRenderTarget(_tempGlobalState.renderTarget, _tempGlobalState.activeCubeFace, _tempGlobalState.activeMipmapLevel);
 		renderer.setViewport(_tempGlobalState.viewport.x, _tempGlobalState.viewport.y, _tempGlobalState.viewport.z, _tempGlobalState.viewport.w);
 		renderer.setClearColor(_tempGlobalState.clearColor.rgb, _tempGlobalState.clearColor.alpha);
 	}
@@ -126,7 +126,7 @@ export namespace Rendering {
 		renderer.toneMapping = options.toneMapping ?? NoToneMapping;
 		renderer.toneMappingExposure = options.toneMappingExposure ?? 1.0;
 
-		renderer.setRenderTarget(target, options.targetMipmapLevel, options.targetCubeFace);
+		renderer.setRenderTarget(target, options.targetCubeFace, options.targetMipmapLevel);
 
 		if (viewport != null) {
 			renderer.setViewport(viewport.x, viewport.y, viewport.z, viewport.w);
@@ -164,7 +164,7 @@ export namespace Rendering {
 		// if we only use Rendering.renderPass() rather than renderer.render(), we don't need to restore the global state
 		// changing renderTarget can be expensive, so we should avoid it if possible
 		if (options.restoreGlobalState === true) {
-			renderer.setRenderTarget(_renderPassSnapshot.renderTarget, _renderPassSnapshot.activeMipmapLevel, _renderPassSnapshot.activeCubeFace);
+			renderer.setRenderTarget(_renderPassSnapshot.renderTarget, _renderPassSnapshot.activeCubeFace, _renderPassSnapshot.activeMipmapLevel);
 			renderer.setViewport(_renderPassSnapshot.viewport.x, _renderPassSnapshot.viewport.y, _renderPassSnapshot.viewport.z, _renderPassSnapshot.viewport.w);
 			if (clearColor !== false) {
 				renderer.setClearColor(_renderPassSnapshot.clearColor.rgb, _renderPassSnapshot.clearColor.alpha);
