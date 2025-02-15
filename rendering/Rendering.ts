@@ -6,6 +6,8 @@ export namespace Rendering {
 
 	const _renderPassSnapshot = {
 		renderTarget: null as WebGLRenderTarget | null,
+		activeMipmapLevel: 0,
+		activeCubeFace: 0,
 		clearColor: {
 			rgb: new Color(),
 			alpha: 0,
@@ -15,6 +17,8 @@ export namespace Rendering {
 
 	const _tempGlobalState = {
 		renderTarget: null as WebGLRenderTarget | null,
+		activeMipmapLevel: 0,
+		activeCubeFace: 0,
 		clearColor: {
 			rgb: new Color(),
 			alpha: 0,
@@ -25,65 +29,76 @@ export namespace Rendering {
 	export function saveGlobalState(renderer: WebGLRenderer) {
 		// update _renderPassSnapshot
 		_tempGlobalState.renderTarget = renderer.getRenderTarget();
+		_tempGlobalState.activeMipmapLevel = renderer.getActiveMipmapLevel();
+		_tempGlobalState.activeCubeFace = renderer.getActiveCubeFace();
 		renderer.getClearColor(_tempGlobalState.clearColor.rgb);
 		_tempGlobalState.clearColor.alpha = renderer.getClearAlpha();
 		renderer.getViewport(_tempGlobalState.viewport);
 	}
 
 	export function restoreGlobalState(renderer: WebGLRenderer) {
-		renderer.setRenderTarget(_tempGlobalState.renderTarget);
+		renderer.setRenderTarget(_tempGlobalState.renderTarget, _tempGlobalState.activeMipmapLevel, _tempGlobalState.activeCubeFace);
 		renderer.setViewport(_tempGlobalState.viewport.x, _tempGlobalState.viewport.y, _tempGlobalState.viewport.z, _tempGlobalState.viewport.w);
 		renderer.setClearColor(_tempGlobalState.clearColor.rgb, _tempGlobalState.clearColor.alpha);
 	}
 
 	export type RenderPassOptions = {
-		/**
-		* Render to target or null to render to canvas
-		*/
-		target: WebGLRenderTarget | null,
 		scene: Scene,
 		camera: Camera,
 		/**
-		* Default: `NoToneMapping`
+		 * Render to target or null to render to canvas
+		 */
+		target: WebGLRenderTarget | null,
+		/**
+		* target's mipmap level to render to
 		*/
+		targetMipmapLevel?: number,
+		/**
+		 * target's cube face to render to if target is a cube texture
+		 */
+		targetCubeFace?: number,
+		/**
+		 * @default NoToneMapping
+		 */
 		toneMapping?: ToneMapping,
 		/**
-		* Default: `1.0`
-		*/
+		 * @default 1.0
+		 */
 		toneMappingExposure?: number,
 		/**
-		* If provided the target will be cleared with this color before rendering
-		* Otherwise the target will not be cleared
-		*/
+		 * If provided the target will be cleared with this color before rendering
+		 * Otherwise the target will not be cleared
+		 */
 		clearColor: {
 			rgb: ColorRepresentation,
 			alpha: number,
 		} | false,
 		/**
-		* If provided the target will be cleared with this depth before rendering
-		* Otherwise the target will not be cleared
-		*/
+		 * If provided the target will be cleared with this depth before rendering
+		 * Otherwise the target will not be cleared
+		 */
 		clearDepth: boolean,
 		/**
-		* If provided the target will be cleared with this stencil before rendering
-		* Otherwise the target will not be cleared
-		*/
+		 * If provided the target will be cleared with this stencil before rendering
+		 * Otherwise the target will not be cleared
+		 */
 		clearStencil: boolean,
 		/**
-		* Override viewport, by default it will spans the entire target
-		*/
+		 * Override viewport, by default it will spans the entire target
+		 */
 		viewport?: Vector4,
 		/**
-		* If provided the scene will be rendered with this material
-		*/
+		 * If provided the scene will be rendered with this material
+		 */
 		overrideMaterial?: Material,
 		/**
-		* Override camera layers mask
-		*/
+		 * Override camera layers mask
+		 */
 		layers?: Layers,
 		/**
-		* Restore global state after rendering (default: `false`)
-		*/
+		 * Restore global state after rendering
+		 * @default false
+		 */
 		restoreGlobalState?: boolean,
 	}
 
@@ -97,6 +112,8 @@ export namespace Rendering {
 
 		// save global state
 		_renderPassSnapshot.renderTarget = renderer.getRenderTarget();
+		_renderPassSnapshot.activeMipmapLevel = renderer.getActiveMipmapLevel();
+		_renderPassSnapshot.activeCubeFace = renderer.getActiveCubeFace();
 		let _overrideMaterial = scene.overrideMaterial;
 		let _autoClear = renderer.autoClear;
 		renderer.getViewport(_renderPassSnapshot.viewport);
@@ -109,7 +126,7 @@ export namespace Rendering {
 		renderer.toneMapping = options.toneMapping ?? NoToneMapping;
 		renderer.toneMappingExposure = options.toneMappingExposure ?? 1.0;
 
-		renderer.setRenderTarget(target);
+		renderer.setRenderTarget(target, options.targetMipmapLevel, options.targetCubeFace);
 
 		if (viewport != null) {
 			renderer.setViewport(viewport.x, viewport.y, viewport.z, viewport.w);
@@ -147,7 +164,7 @@ export namespace Rendering {
 		// if we only use Rendering.renderPass() rather than renderer.render(), we don't need to restore the global state
 		// changing renderTarget can be expensive, so we should avoid it if possible
 		if (options.restoreGlobalState === true) {
-			renderer.setRenderTarget(_renderPassSnapshot.renderTarget);
+			renderer.setRenderTarget(_renderPassSnapshot.renderTarget, _renderPassSnapshot.activeMipmapLevel, _renderPassSnapshot.activeCubeFace);
 			renderer.setViewport(_renderPassSnapshot.viewport.x, _renderPassSnapshot.viewport.y, _renderPassSnapshot.viewport.z, _renderPassSnapshot.viewport.w);
 			if (clearColor !== false) {
 				renderer.setClearColor(_renderPassSnapshot.clearColor.rgb, _renderPassSnapshot.clearColor.alpha);
@@ -176,19 +193,19 @@ export namespace Rendering {
 		restoreGlobalState: boolean,
 		viewport?: Vector4,
 		/**
-		* Clears magenta if not provided, don't clear if null
-		*/
+		 * Clears magenta if not provided, don't clear if null
+		 */
 		clearColor?: {
 			rgb: ColorRepresentation,
 			alpha: number,
 		} | false,
 		/**
-		* Default: `true`
-		*/
+		 * @default true
+		 */
 		clearDepth?: boolean,
 		/**
-		* Default: `false`
-		*/
+		 * @default false
+		 */
 		clearStencil?: boolean,
 	}
 	export function shaderPass(renderer: WebGLRenderer, options: ShaderPassOptions) {
