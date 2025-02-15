@@ -189,6 +189,8 @@ export namespace Rendering {
 
 	export type ShaderPassOptions = {
 		target: WebGLRenderTarget | null,
+		targetMipmapLevel?: number,
+		targetCubeFace?: number,
 		shader: ShaderMaterial,
 		restoreGlobalState: boolean,
 		viewport?: Vector4,
@@ -211,6 +213,8 @@ export namespace Rendering {
 	export function shaderPass(renderer: WebGLRenderer, options: ShaderPassOptions) {
 		renderPass(renderer, {
 			target: options.target,
+			targetMipmapLevel: options.targetMipmapLevel,
+			targetCubeFace: options.targetCubeFace,
 			camera: fragmentPassCamera,
 			scene: fragmentPassScene,
 			clearColor: options.clearColor ?? fragmentPassClearColor,
@@ -226,6 +230,9 @@ export namespace Rendering {
 	export type BlitOptions = {
 		source: Texture,
 		target: WebGLRenderTarget | null,
+		targetMipmapLevel?: number,
+		targetCubeFace?: number,
+		viewport?: Vector4,
 		restoreGlobalState: boolean,
 	}
 
@@ -237,6 +244,9 @@ export namespace Rendering {
 		copyMaterial.uniforms.source.value = options.source;
 		shaderPass(renderer, {
 			target: options.target,
+			targetMipmapLevel: options.targetMipmapLevel,
+			targetCubeFace: options.targetCubeFace,
+			viewport: options.viewport,
 			shader: copyMaterial,
 			restoreGlobalState: options.restoreGlobalState,
 			clearColor: false,
