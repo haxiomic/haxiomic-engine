@@ -1,4 +1,4 @@
-import { AnyPixelFormat, ClampToEdgeWrapping, MagnificationTextureFilter, MathUtils, NoColorSpace, RGBAFormat, TextureDataType, WebGLRenderTarget, Wrapping } from 'three';
+import { AnyPixelFormat, ClampToEdgeWrapping, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, WebGLRenderTarget, Wrapping } from 'three';
 
 export enum PowerOfTwoMode {
 	None,
@@ -27,13 +27,14 @@ export default class RenderTargetStore {
 			width: number,
 			height: number,
 			type: TextureDataType,
-			filtering: MagnificationTextureFilter,
+			magFilter: MagnificationTextureFilter,
+			minFilter?: MinificationTextureFilter,
 			msaaSamples?: number,
 			wrapS?: Wrapping,
 			wrapT?: Wrapping,
 			format?: AnyPixelFormat,
 		},
-		onCreate?: (target: RenderTarget) => void,
+		onCreateOrResize?: (target: RenderTarget) => void,
 	) {
 		let target = this._renderTargets[name];
 
@@ -73,21 +74,23 @@ export default class RenderTargetStore {
 					depthTexture: options.depthBuffer ? undefined : null,
 					type: options.type,
 					format: options.format ?? RGBAFormat,
-					minFilter: options.filtering,
-					magFilter: options.filtering,
+					magFilter: options.magFilter,
+					minFilter: options.minFilter ?? options.magFilter,
 					wrapS: options.wrapS ?? ClampToEdgeWrapping,
 					wrapT: options.wrapT ?? ClampToEdgeWrapping,
 					samples: options.msaaSamples ?? 0,
 				}) as RenderTarget;
+				target.texture.width = target.width;
+				target.texture.height = target.height;
 				target.name = name;
 				this._renderTargets[name] = target;
-				onCreate?.(target);
+				onCreateOrResize?.(target);
 			}
 			else {
 				target.texture.type = options.type;
 				target.texture.format = options.format ?? RGBAFormat;
-				target.texture.minFilter = options.filtering;
-				target.texture.magFilter = options.filtering;
+				target.texture.magFilter = options.magFilter;
+				target.texture.minFilter = options.minFilter ?? options.magFilter,
 				target.texture.wrapS = options.wrapS ?? ClampToEdgeWrapping;
 				target.texture.wrapT = options.wrapT ?? ClampToEdgeWrapping;
 				target.depthBuffer = options.depthBuffer ?? false;
@@ -96,13 +99,11 @@ export default class RenderTargetStore {
 					target.height != height
 				) {
 					target.setSize(width, height);
+					target.texture.width = target.width;
+					target.texture.height = target.height;
+					onCreateOrResize?.(target);
 				}
 			}
-		}
-
-		if (target != null) {
-			target.texture.width = target.width;
-			target.texture.height = target.height;
 		}
 
 		return target;
