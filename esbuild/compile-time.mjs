@@ -57,7 +57,7 @@ let cacheDir = findCacheDir({
 async function buildScript(workerPath, extraConfig) {
     let scriptNameParts = path.basename(workerPath).split('.');
     scriptNameParts.pop();
-    scriptNameParts.push('js');
+    scriptNameParts.push('mjs');
     let scriptName = scriptNameParts.join('.');
     let bundlePath = path.resolve(cacheDir, scriptName);
 
