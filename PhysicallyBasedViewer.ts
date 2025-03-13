@@ -433,12 +433,7 @@ export class PhysicallyBasedViewer<
 			});
 		}
 
-		const frameLoop = () => {
-			this.frameLoopHandle = window.requestAnimationFrame(frameLoop);
-			this.render();
-		}
-
-		frameLoop();
+		renderer.setAnimationLoop((time, frame) => this.render());
 	}
 
 	private _lastRenderTime_ms: number = NaN;
