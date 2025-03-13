@@ -64,14 +64,14 @@ export default class RenderTargetStore {
 			}
 
 			if (target == null) {
-				// console.log(`RenderTargetStore creating render target ${name}`);
+				// console.info(`RenderTargetStore creating render target ${name}`);
 				target = new WebGLRenderTarget(width, height, {
 					colorSpace: NoColorSpace,
 					anisotropy: 0,
 					generateMipmaps: false,
 					stencilBuffer: false,
 					depthBuffer: options.depthBuffer ?? false,
-					depthTexture: options.depthBuffer ? undefined : null,
+					// depthTexture: options.depthBuffer ? undefined : null,
 					type: options.type,
 					format: options.format ?? RGBAFormat,
 					magFilter: options.magFilter,
