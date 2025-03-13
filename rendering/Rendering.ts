@@ -234,6 +234,7 @@ export namespace Rendering {
 		targetCubeFace?: number,
 		viewport?: Vector4,
 		restoreGlobalState: boolean,
+		clear?: boolean,
 	}
 
 	const copyMaterial = new CopyMaterial();
@@ -249,9 +250,9 @@ export namespace Rendering {
 			viewport: options.viewport,
 			shader: copyMaterial,
 			restoreGlobalState: options.restoreGlobalState,
-			clearColor: false,
-			clearDepth: false,
-			clearStencil: false,
+			clearColor: options.clear != null ? {rgb: 0x00000, alpha: 1} : false,
+			clearDepth: options.clear != null ? options.clear : false,
+			clearStencil: options.clear != null ? options.clear : false,
 		});
 		copyMaterial.uniforms.source.value = null;
 	}
