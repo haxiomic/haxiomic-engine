@@ -490,7 +490,7 @@ export class PhysicallyBasedViewer<
 		if (this.postProcessingEnabled) {
 			this.renderer.toneMappingExposure = this.toneMappingExposure;
 			this.renderer.toneMapping = this.toneMapping;
-			this.renderer.outputColorSpace = (renderer.getContext() as any).drawingBufferColorSpace ?? SRGBColorSpace;
+			this.renderer.outputColorSpace = SRGBColorSpace;
 			this.renderer.setClearColor(this.clearColor.rgb, this.clearColor.alpha);
 			this.renderer.autoClearDepth = true;
 			this.renderer.autoClearStencil = true;
@@ -510,7 +510,6 @@ export class PhysicallyBasedViewer<
 				clearColor: this.clearColor,
 				clearDepth: true,
 				clearStencil: true,
-				// outputColorSpace: renderer.getContext().drawingBufferColorSpace ?? SRGBColorSpace, // ideally should use p3 encoding if canvas is p3 (https://github.com/mrdoob/three.js/issues/23614)
 				toneMapping: this.toneMapping,
 				toneMappingExposure: this.toneMappingExposure,
 			});
