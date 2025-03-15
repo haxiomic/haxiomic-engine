@@ -1,4 +1,4 @@
-import { AnyPixelFormat, ClampToEdgeWrapping, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, WebGLRenderTarget, Wrapping } from 'three';
+import { AnyPixelFormat, ClampToEdgeWrapping, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderTarget, Wrapping } from 'three';
 
 export enum PowerOfTwoMode {
 	None,
@@ -15,94 +15,111 @@ type RenderTarget = WebGLRenderTarget & {
 	}
 }
 
+export type RenderTargetStoreOptions = {
+	powerOfTwoMode?: PowerOfTwoMode,
+	depthBuffer?: boolean,
+	type: TextureDataType,
+	magFilter: MagnificationTextureFilter,
+	minFilter?: MinificationTextureFilter,
+	msaaSamples?: number,
+	wrapS?: Wrapping,
+	wrapT?: Wrapping,
+	format?: AnyPixelFormat,
+}
+
 export default class RenderTargetStore {
+
+	static defaultOptions: RenderTargetStoreOptions = {
+		powerOfTwoMode: PowerOfTwoMode.None,
+		depthBuffer: false,
+		type: UnsignedByteType,
+		magFilter: LinearFilter,
+		minFilter: LinearFilter,
+		msaaSamples: 0,
+		wrapS: ClampToEdgeWrapping,
+		wrapT: ClampToEdgeWrapping,
+		format: undefined,
+	}
 
 	_renderTargets: { [key: string]: RenderTarget } = {};
 
 	getRenderTarget(
 		name: string,
-		options?: {
-			powerOfTwoMode?: PowerOfTwoMode,
-			depthBuffer?: boolean,
-			width: number,
-			height: number,
-			type: TextureDataType,
-			magFilter: MagnificationTextureFilter,
-			minFilter?: MinificationTextureFilter,
-			msaaSamples?: number,
-			wrapS?: Wrapping,
-			wrapT?: Wrapping,
-			format?: AnyPixelFormat,
-		},
-		onCreateOrResize?: (target: RenderTarget) => void,
+		width: number,
+		height: number,
+		options?: RenderTargetStoreOptions,
+		onCreateOrResize?: (target: RenderTarget, event: 'create' | 'resize') => void,
 	) {
 		let target = this._renderTargets[name];
 
-		if (options != null) {
-			let width = 0;
-			let height = 0;
+		// determine texture size
+		let textureWidth = 0;
+		let textureHeight = 0;
+		switch (options?.powerOfTwoMode) {
+			default:
+			case PowerOfTwoMode.None: {
+				textureWidth = Math.round(width);
+				textureHeight = Math.round(height);
+			} break;
+			case PowerOfTwoMode.Ceil: {
+				// ~~ is a faster Math.floor
+				textureWidth = ~~MathUtils.ceilPowerOfTwo(width);
+				textureHeight = ~~MathUtils.ceilPowerOfTwo(height);
+			} break;
+			case PowerOfTwoMode.Floor: {
+				textureWidth = ~~MathUtils.floorPowerOfTwo(width);
+				textureHeight = ~~MathUtils.floorPowerOfTwo(height);
+			} break;
+			case PowerOfTwoMode.Nearest: {
+				textureWidth = ~~nearestPowerOfTwo(width);
+				textureHeight = ~~nearestPowerOfTwo(height);
+			} break;
+		}
 
-			switch (options.powerOfTwoMode) {
-				default:
-				case PowerOfTwoMode.None: {
-					width = Math.round(options.width);
-					height = Math.round(options.height);
-				} break;
-				case PowerOfTwoMode.Ceil: {
-					// ~~ is a faster Math.floor
-					width = ~~MathUtils.ceilPowerOfTwo(options.width);
-					height = ~~MathUtils.ceilPowerOfTwo(options.height);
-				} break;
-				case PowerOfTwoMode.Floor: {
-					width = ~~MathUtils.floorPowerOfTwo(options.width);
-					height = ~~MathUtils.floorPowerOfTwo(options.height);
-				} break;
-				case PowerOfTwoMode.Nearest: {
-					width = ~~nearestPowerOfTwo(options.width);
-					height = ~~nearestPowerOfTwo(options.height);
-				} break;
+		if (target == null) {
+			const defaultOptions = RenderTargetStore.defaultOptions;
+			// console.info(`RenderTargetStore creating render target ${name}`);
+			target = new WebGLRenderTarget(textureWidth, textureHeight, {
+				colorSpace: NoColorSpace,
+				anisotropy: 0,
+				generateMipmaps: false,
+				stencilBuffer: false,
+				depthBuffer: options?.depthBuffer ?? defaultOptions.depthBuffer,
+				type: options?.type ?? defaultOptions.type,
+				format: options?.format ?? defaultOptions.format,
+				magFilter: options?.magFilter ?? defaultOptions.magFilter,
+				minFilter: options?.minFilter ?? options?.magFilter ?? defaultOptions.minFilter,
+				wrapS: options?.wrapS ?? defaultOptions.wrapS,
+				wrapT: options?.wrapT ?? defaultOptions.wrapT,
+				samples: options?.msaaSamples ?? defaultOptions.msaaSamples,
+			}) as RenderTarget;
+			target.texture.width = target.width;
+			target.texture.height = target.height;
+			target.name = name;
+			this._renderTargets[name] = target;
+			onCreateOrResize?.(target, 'create');
+		} else {
+			// update options
+			if (options != null) {
+				target.texture.type = options.type;
+				target.texture.format = options.format ?? target.texture.format
+				target.texture.magFilter = options.magFilter;
+				target.texture.minFilter = options.minFilter ?? target.texture.minFilter
+				target.texture.wrapS = options.wrapS ?? target.texture.wrapS;
+				target.texture.wrapT = options.wrapT ?? target.texture.wrapT;
+				target.samples = options.msaaSamples ?? target.samples;
+				target.depthBuffer = options.depthBuffer ?? false;
 			}
 
-			if (target == null) {
-				// console.info(`RenderTargetStore creating render target ${name}`);
-				target = new WebGLRenderTarget(width, height, {
-					colorSpace: NoColorSpace,
-					anisotropy: 0,
-					generateMipmaps: false,
-					stencilBuffer: false,
-					depthBuffer: options.depthBuffer ?? false,
-					// depthTexture: options.depthBuffer ? undefined : null,
-					type: options.type,
-					format: options.format ?? RGBAFormat,
-					magFilter: options.magFilter,
-					minFilter: options.minFilter ?? options.magFilter,
-					wrapS: options.wrapS ?? ClampToEdgeWrapping,
-					wrapT: options.wrapT ?? ClampToEdgeWrapping,
-					samples: options.msaaSamples ?? 0,
-				}) as RenderTarget;
+			// resize if needed
+			if (
+				target.width != textureWidth ||
+				target.height != textureHeight
+			) {
+				target.setSize(textureWidth, textureHeight);
 				target.texture.width = target.width;
 				target.texture.height = target.height;
-				target.name = name;
-				this._renderTargets[name] = target;
-				onCreateOrResize?.(target);
-			}
-			else {
-				target.texture.type = options.type;
-				target.texture.format = options.format ?? RGBAFormat;
-				target.texture.magFilter = options.magFilter;
-				target.texture.minFilter = options.minFilter ?? options.magFilter,
-				target.texture.wrapS = options.wrapS ?? ClampToEdgeWrapping;
-				target.texture.wrapT = options.wrapT ?? ClampToEdgeWrapping;
-				target.depthBuffer = options.depthBuffer ?? false;
-				if (
-					target.width != width ||
-					target.height != height
-				) {
-					target.setSize(width, height);
-					target.texture.width = target.width;
-					target.texture.height = target.height;
-					onCreateOrResize?.(target);
-				}
+				onCreateOrResize?.(target, 'resize');
 			}
 		}
 

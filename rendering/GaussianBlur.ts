@@ -1,5 +1,5 @@
 import { ClampToEdgeWrapping, LinearFilter, Texture, WebGLRenderTarget, WebGLRenderer, Wrapping } from "three";
-import RenderTargetStore from "./RenderTargetStore";
+import RenderTargetStore, { RenderTargetStoreOptions } from "./RenderTargetStore";
 import Blur1D from "../materials/Blur1D";
 import { Rendering } from "./Rendering";
 
@@ -22,10 +22,8 @@ export function gaussianBlur(
 	let textureWidth: number = texture.image.width ?? texture.source.data.width ?? texture.image.videoWidth;
 	let textureHeight: number = texture.image.height ?? texture.source.data.height ?? texture.image.videoHeight;
 
-	let textureOptions = {
-		width: textureWidth,
-		height: textureHeight,
-		filtering: LinearFilter,
+	let textureOptions: RenderTargetStoreOptions = {
+		magFilter: LinearFilter,
 		type: texture.type,
 		wrapS: wrap,
 		wrapT: wrap,
@@ -33,7 +31,7 @@ export function gaussianBlur(
 
 	let blurX = Blur1D.get(ctx, kernel, truncationSigma, 1, 0, texture, textureWidth, textureHeight);
 	
-	let blurredMaskX = renderTargetStore.getRenderTarget(`${cacheId}_blur2D_x`, textureOptions);
+	let blurredMaskX = renderTargetStore.getRenderTarget(`${cacheId}_blur2D_x`, textureWidth, textureHeight, textureOptions);
 
 	Rendering.shaderPass(renderer, {
 		target: blurredMaskX,
@@ -41,7 +39,7 @@ export function gaussianBlur(
 		shader: blurX,
 	});
 
-	let result = target ?? renderTargetStore.getRenderTarget(`${cacheId}_blur2D_xy`, textureOptions);
+	let result = target ?? renderTargetStore.getRenderTarget(`${cacheId}_blur2D_xy`, textureWidth, textureHeight, textureOptions);
 
 	let blurY = Blur1D.get(ctx, kernel, truncationSigma, 0, 1, blurredMaskX.texture, textureWidth, textureHeight);
 
