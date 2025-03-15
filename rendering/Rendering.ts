@@ -1,4 +1,4 @@
-import { Camera, Color, ColorRepresentation, Layers, Material, NoToneMapping, OrthographicCamera, Scene, ShaderMaterial, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
+import { Camera, Color, ColorRepresentation, DoubleSide, FrontSide, Layers, Material, MeshBasicMaterial, NoToneMapping, OrthographicCamera, Scene, ShaderMaterial, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
 import { CopyMaterial } from "../materials/CopyMaterial";
 import ClipSpaceTriangle from "../objects/ClipSpaceTriangle";
 
@@ -191,7 +191,7 @@ export namespace Rendering {
 		target: WebGLRenderTarget | null,
 		targetMipmapLevel?: number,
 		targetCubeFace?: number,
-		shader: ShaderMaterial,
+		shader: Material,
 		restoreGlobalState: boolean,
 		viewport?: Vector4,
 		/**
@@ -230,6 +230,7 @@ export namespace Rendering {
 	export type BlitOptions = {
 		source: Texture,
 		target: WebGLRenderTarget | null,
+		respectColorSpaceSettings: boolean,
 		targetMipmapLevel?: number,
 		targetCubeFace?: number,
 		viewport?: Vector4,
@@ -237,24 +238,33 @@ export namespace Rendering {
 		clear?: boolean,
 	}
 
-	const copyMaterial = new CopyMaterial();
+	const rawCopyMaterial = new CopyMaterial();
+	const threeCopyMaterial = new MeshBasicMaterial({
+		map: null,
+		color: 0xffffff,
+		side: FrontSide,
+		depthTest: false,
+		depthWrite: false,
+	});
 	/**
 	 * Copy texture to target using fragment shader pass
 	 */
 	export function blit(renderer: WebGLRenderer, options: BlitOptions) {
-		copyMaterial.uniforms.source.value = options.source;
+		rawCopyMaterial.uniforms.source.value = options.source;
+		threeCopyMaterial.map = options.source;
 		shaderPass(renderer, {
 			target: options.target,
 			targetMipmapLevel: options.targetMipmapLevel,
 			targetCubeFace: options.targetCubeFace,
 			viewport: options.viewport,
-			shader: copyMaterial,
+			shader: options.respectColorSpaceSettings ? threeCopyMaterial : rawCopyMaterial,
 			restoreGlobalState: options.restoreGlobalState,
 			clearColor: options.clear != null ? {rgb: 0x00000, alpha: 1} : false,
 			clearDepth: options.clear != null ? options.clear : false,
 			clearStencil: options.clear != null ? options.clear : false,
 		});
-		copyMaterial.uniforms.source.value = null;
+		threeCopyMaterial.map = null;
+		rawCopyMaterial.uniforms.source.value = null;
 	}
 
 	export type ClearOptions = {
