@@ -12,8 +12,14 @@ export default class ClipSpaceTriangle<TMaterial extends Material> extends Mesh<
 			 3, -1, 0,
 			-1,  3, 0,
 		];
+		const uvs = [
+			0, 0,
+			2, 0,
+			0, 2,
+		];
 		geom.setIndex( indices );
 		geom.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
+		geom.setAttribute( 'uv', new Float32BufferAttribute( uvs, 2 ) );
 		return geom;
 	})();
 
