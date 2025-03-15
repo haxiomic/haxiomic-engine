@@ -230,7 +230,8 @@ export namespace Rendering {
 	export type BlitOptions = {
 		source: Texture,
 		target: WebGLRenderTarget | null,
-		respectColorSpaceSettings: boolean,
+		/** if true, three.js renderer.outputColorSpace or target.texture.colorSpace will be respected for the copy */
+		applyOutputColorSpace?: boolean,
 		targetMipmapLevel?: number,
 		targetCubeFace?: number,
 		viewport?: Vector4,
@@ -257,7 +258,7 @@ export namespace Rendering {
 			targetMipmapLevel: options.targetMipmapLevel,
 			targetCubeFace: options.targetCubeFace,
 			viewport: options.viewport,
-			shader: options.respectColorSpaceSettings ? threeCopyMaterial : rawCopyMaterial,
+			shader: options.applyOutputColorSpace ? threeCopyMaterial : rawCopyMaterial,
 			restoreGlobalState: options.restoreGlobalState,
 			clearColor: options.clear != null ? {rgb: 0x00000, alpha: 1} : false,
 			clearDepth: options.clear != null ? options.clear : false,
