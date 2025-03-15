@@ -5,13 +5,15 @@ import { DoubleSide, RawShaderMaterial, Texture, Uniform } from "three";
  */
 export class CopyMaterial extends RawShaderMaterial {
 
-	uniforms: {
+	declare uniforms: {
 		source: Uniform;
-	} = this.uniforms;
+	};
 
 	constructor() {
 		super({
-			uniforms: {},
+			uniforms: {
+				source: new Uniform(null),
+			},
 			vertexShader: /*glsl*/`
 				attribute vec2 position;
 				varying vec2 vUv;
@@ -30,8 +32,6 @@ export class CopyMaterial extends RawShaderMaterial {
 			`,
 			side: DoubleSide,
 		});
-
-		this.uniforms.source = new Uniform(null);
 	}
 
 	setParams(texture: Texture) {
