@@ -17,9 +17,9 @@ export enum LogLevel {
  * 
  * Usage:
  * 
- * const console = new Logger('<magenta,b>Example</>');
+ * const console = new NamedConsole('<magenta,b>Example</>');
  */
-export class Logger {
+export class NamedConsole {
 
 	typeFormattingMap = {
 		'number': 'green',

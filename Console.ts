@@ -17,8 +17,13 @@
  * 
  * @author haxiomic (George Corney)
  * @version 1.0.0
+ * @license MIT
  */
 export namespace Console {
+
+	export let emitVerbose = false;
+	export let emitDebug = true;
+	export let emitLog = true;
 
 	export enum OutputStream {
 		Log,
@@ -43,7 +48,9 @@ export namespace Console {
 	export let argSeparator = ' ';
 
 	export function log(...args: any[]){
-		printlnFormatted(logPrefix + args.join(argSeparator), OutputStream.Log);
+		if (emitLog) {
+			printlnFormatted(logPrefix + args.join(argSeparator), OutputStream.Log);
+		}
 	}
 
 	export function warn(...args: any[]){
@@ -51,27 +58,80 @@ export namespace Console {
 	}
 
 	export function error(...args: any[]){
-		printlnFormatted(errorPrefix + args.join(argSeparator), OutputStream.Error);
+		let errorStack = new Error();
+		let callerInfo = getCallerInfo(errorStack);
+
+		if (callerInfo != null) {
+			let callerPrefix = callerInfoPrefix(callerInfo);
+			// print debug message
+			printlnFormatted(errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : '') + args.join(argSeparator), OutputStream.Error);
+		} else {
+			printlnFormatted(errorPrefix + args.join(argSeparator), OutputStream.Error);
+		}
 	}
 
 	export function success(...args: any[]){
 		printlnFormatted(successPrefix + args.join(argSeparator), OutputStream.Log);
 	}
 
-	export function debug(...args: any[]){
-		// get stack trace
-		let stack = new Error().stack;
+	export function verbose(...args: any[]){
+		if (emitVerbose) {
+			printlnFormatted(args.join(argSeparator), OutputStream.Log);
+		}
+	}
 
-		if (stack != null) {
-			// get line number of caller
-			let lineNumber = stack.split('\n')[2].split(':')[1];
-			// get file name of caller
-			let fileName = stack.split('\n')[2].split(':')[0].split('/').pop();
+	export function debug(...args: any[]){
+		if (!emitDebug) return;
+
+		// get stack trace
+		let errorStack = new Error();
+		let callerInfo = getCallerInfo(errorStack);
+
+		if (callerInfo != null) {
+			let callerPrefix = callerInfoPrefix(callerInfo);
 			// print debug message
-			printlnFormatted(debugPrefix + fileName + ':' + lineNumber + ' ' + args.join(argSeparator), OutputStream.Debug);
+			printlnFormatted(debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : '') + args.join(argSeparator), OutputStream.Debug);
 		} else {
 			printlnFormatted(debugPrefix + args.join(argSeparator), OutputStream.Debug);
 		}
+	}
+
+	export function getCallerInfo(error: Error) {
+		if (error.stack != null) {
+			// get the line that called debug
+			let lines = error.stack.split('\n');
+			let line = lines[2];
+			let match = line.match(/at\s+(.*)\s+\((.*):(\d+):\d+\)/);
+			let functionName = match?.[1] ?? null;
+			let filepath = match?.[2] ?? null;
+			let filename = filepath?.split(/[/\\]/).pop() ?? null;
+			let lineNumber = match != null ? parseInt(match[3]) : null;
+
+			return {
+				functionName,
+				filepath,
+				filename,
+				lineNumber,
+			}
+		} else {
+			return null;
+		}
+	}
+
+	export function callerInfoPrefix(callerInfo: ReturnType<typeof getCallerInfo>): string {
+		let parts = new Array<string>();
+		if (callerInfo != null) {
+			if (callerInfo.filename != null) {
+				parts.push(callerInfo.filename);
+			}
+			if (callerInfo.functionName != null) {
+				parts.push(callerInfo.functionName + '()');
+			}
+			if (callerInfo.lineNumber != null) {
+				parts.push(callerInfo.lineNumber.toString());
+			}
+		}
+		return parts.join(':');
 	}
 
 	export function examine(...args: any[]){
@@ -79,11 +139,11 @@ export namespace Console {
 		for (let arg of args) {
 			if (typeof arg === 'object') {
 				// check if we have require
-				if (typeof require === 'undefined') {
-					printlnFormatted(logPrefix + JSON.stringify(arg), OutputStream.Log);
+				let global = globalThis as any;
+				if ('require' in global) {
+					printlnFormatted(logPrefix + global.require('util').inspect(arg, { depth: null, colors: true }), OutputStream.Log);
 				} else {
-					let r = require; // alias to avoid esbuild error
-					printlnFormatted(logPrefix + r('util').inspect(arg, { depth: null, colors: true }), OutputStream.Log);
+					printlnFormatted(logPrefix + JSON.stringify(arg), OutputStream.Log);
 				}
 			} else {
 				printlnFormatted(logPrefix + arg, OutputStream.Log);
@@ -124,16 +184,20 @@ export namespace Console {
 
 	export function print(s: string = '', outputStream: OutputStream = OutputStream.Log) {
 		if (formatMode == FormatMode.AsciiTerminal) {
-			// write direct to stdout/stderr
-			switch (outputStream) {
-				case OutputStream.Log:
-				case OutputStream.Debug:
-					process.stdout.write(s);
-					break;
-				case OutputStream.Warn:
-				case OutputStream.Error:
-					process.stderr.write(s);
-					break;
+			// check if process is defined
+			let global = globalThis as any;
+			if ('process' in global) {
+				// write direct to stdout/stderr
+				switch (outputStream) {
+					case OutputStream.Log:
+					case OutputStream.Debug:
+						global.process.stdout.write(s);
+						break;
+					case OutputStream.Warn:
+					case OutputStream.Error:
+						global.process.stderr.write(s);
+						break;
+				}
 			}
 		} else {
 			// write to console
@@ -272,8 +336,9 @@ export namespace Console {
 		if (typeof window !== 'undefined') {
 			return FormatMode.BrowserConsole;
 		} else {
+			let hasProcess = 'process' in globalThis;
 			// check for terminal color support
-			if (process.stdout.isTTY) {
+			if (hasProcess && (globalThis as any).process.stdout.isTTY) {
 				return FormatMode.AsciiTerminal;
 			} else {
 				return FormatMode.Disabled;
