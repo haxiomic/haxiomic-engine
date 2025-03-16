@@ -1,13 +1,19 @@
-import { RawShaderMaterial, Texture, Uniform, Vector2 } from 'three';
+import { Texture, Uniform, Vector2 } from 'three';
+import { RawShaderMaterial } from './RawShaderMaterial';
+import { ShaderMaterial } from './ShaderMaterial';
 
 /**
 	@author haxiomic
 **/
-class Blur1D extends RawShaderMaterial {
+class Blur1D extends ShaderMaterial<{
+	texture: Uniform<Texture | null>,
+	textureLodLevel: Uniform<number>,
+	invResolution: Uniform<Vector2>,
+}> {
 
 	static instances = new Map<string, Blur1D>();
 
-	static get(ctx: WebGLRenderingContext, kernel: number, truncationSigma: number, directionX: number, directionY: number, texture: Texture, width: number, height: number): Blur1D {
+	static get(ctx: WebGLRenderingContext, kernel: number, truncationSigma: number, directionX: number, directionY: number, texture: Texture, width: number, height: number, textureLodLevel = 0): Blur1D {
 		kernel = Blur1D.nearestBestKernel(kernel);
 		const key = `${kernel}@${directionX}@${directionY}@${truncationSigma}`;
 		let instance = Blur1D.instances.get(key);
@@ -15,41 +21,33 @@ class Blur1D extends RawShaderMaterial {
 			instance = new Blur1D(ctx, kernel, truncationSigma, directionX, directionY, true);
 			Blur1D.instances.set(key, instance);
 		}
-		instance.uTexture.value = texture;
-		instance.uTexelSize.value.set(1 / width, 1 / height);
+		instance.uniforms.texture.value = texture;
+		instance.uniforms.textureLodLevel.value = textureLodLevel;
+		instance.uniforms.invResolution.value.set(1 / width, 1 / height);
 		return instance;
 	}
 
-	uTexture: Uniform<Texture | null>;
-	uTexelSize: Uniform<Vector2>;
 	kernel: number;
 	directionX: number;
 	directionY: number;
 
 	constructor(ctx: WebGLRenderingContext, kernel: number, truncationSigma: number, directionX: number, directionY: number, linearSampling: boolean) {
-		const uTexture = new Uniform<Texture | null>(null);
-		const uTexelSize = new Uniform<Vector2>(new Vector2(1, 1));
 		const shaderParts = Blur1D.generateShaderParts(ctx, kernel, truncationSigma, directionX, directionY, linearSampling);
-		const precision = 'mediump';
 		super({
 			uniforms: {
-				texture: uTexture,
-				invResolution: uTexelSize,
+				texture: new Uniform<Texture | null>(null),
+				textureLodLevel: new Uniform(0),
+				invResolution: new Uniform<Vector2>(new Vector2(1, 1)),
 			},
 			vertexShader: /*glsl*/`
-				precision ${precision} float;
-				attribute vec2 position;
-
 				uniform vec2 invResolution;
-				uniform mat4 projectionMatrix;
-				uniform mat4 modelViewMatrix;
 
 				${shaderParts.varyingDeclarations.join('\n')}
 
 				const vec2 madd = vec2(0.5, 0.5);
 
 				void main() {
-					gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 0.0, 1.0);
+					gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 
 					vec2 texelCoord = (gl_Position.xy * madd + madd);
 
@@ -57,8 +55,8 @@ class Blur1D extends RawShaderMaterial {
 				}
 			`,
 			fragmentShader: /*glsl*/`
-				precision ${precision} float;
 				uniform sampler2D texture;
+				uniform float textureLodLevel;
 
 				${shaderParts.fragmentDeclarations.join('\n')}
 
@@ -74,8 +72,6 @@ class Blur1D extends RawShaderMaterial {
 			`,
 		});
 
-		this.uTexture = uTexture;
-		this.uTexelSize = uTexelSize;
 		this.kernel = kernel;
 		this.directionX = directionX;
 		this.directionY = directionY;
@@ -155,7 +151,7 @@ class Blur1D extends RawShaderMaterial {
 		}
 
 		for (let i = 0; i < offsets.length; i++) {
-			textureSamples.push(/*glsl*/`blend += texture2D(texture, sampleCoord${i}) * ${Blur1D.glslFloat(weights[i])};`);
+			textureSamples.push(/*glsl*/`blend += textureLod(texture, sampleCoord${i}, textureLodLevel) * ${Blur1D.glslFloat(weights[i])};`);
 		}
 
 		return {
