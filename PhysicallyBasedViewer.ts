@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, Matrix4, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
+import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, ArrayCamera, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, Matrix4, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
@@ -438,8 +438,8 @@ export class PhysicallyBasedViewer<
 
 	private _lastRenderTime_ms: number = NaN;
 
-	render(renderTarget: WebGLRenderTarget | null = null) {
-		let { renderer, scene, camera } = this;
+	render(renderTarget: WebGLRenderTarget | null = null, camera: Camera = this.camera) {
+		let { renderer, scene } = this;
 		let renderTime_ms = performance.now();
 		let dt_ms = isNaN(this._lastRenderTime_ms) ? 16 : (renderTime_ms - this._lastRenderTime_ms);
 		let maxDt_ms = 1000 / 30;
@@ -458,13 +458,19 @@ export class PhysicallyBasedViewer<
 			// canvas.width = targetWidth;
 			// canvas.height = targetHeight;
 			renderer.setSize(targetWidth, targetHeight, false);
-		}
 
-		let aspect = targetWidth / targetHeight;
-		if (camera.aspect != aspect) {
-			camera.aspect = targetWidth / targetHeight;
-			camera.updateProjectionMatrix();
 		}
+			let aspect = targetWidth / targetHeight;
+			if (camera instanceof PerspectiveCamera && camera.aspect != aspect) {
+				camera.aspect = aspect;
+				camera.updateProjectionMatrix();
+			} else if (camera instanceof ArrayCamera) {
+				for (let cam of camera.cameras) {
+					cam.aspect = aspect;
+					cam.updateProjectionMatrix();
+				}
+			}
+
 
 		this.events.beforeUpdate.dispatch({
 			t_s: renderTime_ms / 1000,
