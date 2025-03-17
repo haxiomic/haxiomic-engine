@@ -25,6 +25,7 @@ export type RenderTargetStoreOptions = {
 	wrapS?: Wrapping,
 	wrapT?: Wrapping,
 	format?: AnyPixelFormat,
+	allocateMipmaps?: boolean,
 }
 
 export default class RenderTargetStore {
@@ -39,18 +40,19 @@ export default class RenderTargetStore {
 		wrapS: ClampToEdgeWrapping,
 		wrapT: ClampToEdgeWrapping,
 		format: undefined,
+		allocateMipmaps: false,
 	}
 
 	_renderTargets: { [key: string]: RenderTarget } = {};
 
 	getRenderTarget(
-		name: string,
+		key: string,
 		width: number,
 		height: number,
 		options?: RenderTargetStoreOptions,
 		onCreateOrResize?: (target: RenderTarget, event: 'create' | 'resize') => void,
 	) {
-		let target = this._renderTargets[name];
+		let target = this._renderTargets[key];
 
 		// determine texture size
 		let textureWidth = 0;
@@ -95,8 +97,12 @@ export default class RenderTargetStore {
 			}) as RenderTarget;
 			target.texture.width = target.width;
 			target.texture.height = target.height;
-			target.name = name;
-			this._renderTargets[name] = target;
+			target.name = key;
+			this._renderTargets[key] = target;
+
+			if (options?.allocateMipmaps) {
+				initMipmapArray(target);
+			}
 			onCreateOrResize?.(target, 'create');
 		} else {
 			// update options
@@ -119,6 +125,10 @@ export default class RenderTargetStore {
 				target.setSize(textureWidth, textureHeight);
 				target.texture.width = target.width;
 				target.texture.height = target.height;
+
+				if (options?.allocateMipmaps) {
+					initMipmapArray(target);
+				}
 				onCreateOrResize?.(target, 'resize');
 			}
 		}
@@ -134,6 +144,26 @@ export default class RenderTargetStore {
 		this._renderTargets = {};
 	}
 
+	static getOptionsFromRenderTarget(target: WebGLRenderTarget): RenderTargetStoreOptions {
+		return {
+			powerOfTwoMode: PowerOfTwoMode.None,
+			depthBuffer: target.depthBuffer,
+			type: target.texture.type,
+			magFilter: target.texture.magFilter,
+			minFilter: target.texture.minFilter,
+			msaaSamples: target.samples,
+			wrapS: target.texture.wrapS,
+			wrapT: target.texture.wrapT,
+			format: target.texture.format,
+			allocateMipmaps: target.texture.mipmaps != null,
+		}
+	}
+
+}
+
+function initMipmapArray(target: WebGLRenderTarget) {
+	const mipmapCount = Math.floor(Math.log2(Math.max(target.width, target.height))) + 1;
+	target.texture.mipmaps = new Array(mipmapCount).fill({});
 }
 
 function nearestPowerOfTwo(value: number) {
