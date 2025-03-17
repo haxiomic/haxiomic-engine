@@ -194,6 +194,8 @@ export namespace Rendering {
 		shader: Material,
 		restoreGlobalState: boolean,
 		viewport?: Vector4,
+		toneMapping?: ToneMapping,
+		toneMappingExposure?: number,
 		/**
 		 * Clears magenta if not provided, don't clear if null
 		 */
@@ -221,7 +223,8 @@ export namespace Rendering {
 			clearDepth: options.clearDepth ?? true,
 			clearStencil: options.clearStencil ?? false,
 			overrideMaterial: options.shader,
-			toneMapping: NoToneMapping,
+			toneMapping: options.toneMapping ?? NoToneMapping,
+			toneMappingExposure: options.toneMappingExposure ?? 1.0,
 			restoreGlobalState: options.restoreGlobalState,
 			viewport: options.viewport,
 		});
@@ -232,6 +235,8 @@ export namespace Rendering {
 		target: WebGLRenderTarget | null,
 		/** if true, three.js renderer.outputColorSpace or target.texture.colorSpace will be respected for the copy */
 		applyOutputColorSpace?: boolean,
+		toneMapping?: ToneMapping,
+		toneMappingExposure?: number,
 		targetMipmapLevel?: number,
 		targetCubeFace?: number,
 		viewport?: Vector4,
@@ -259,6 +264,8 @@ export namespace Rendering {
 			targetCubeFace: options.targetCubeFace,
 			viewport: options.viewport,
 			shader: options.applyOutputColorSpace ? threeCopyMaterial : rawCopyMaterial,
+			toneMapping: options.toneMapping,
+			toneMappingExposure: options.toneMappingExposure,
 			restoreGlobalState: options.restoreGlobalState,
 			clearColor: options.clear != null ? {rgb: 0x00000, alpha: 1} : false,
 			clearDepth: options.clear != null ? options.clear : false,

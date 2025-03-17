@@ -79,8 +79,8 @@ export function generateBlurredMipmaps(
         // render Y blur into the right mipmap level
         const blurYShader = Blur1D.get(
             gl, 
-            blurKernel_pixels, 
-            truncationSigma, 
+            blurKernel_pixels,
+            truncationSigma,
             0, 1,
             blurredMipsXPong.texture,
             width, height,
