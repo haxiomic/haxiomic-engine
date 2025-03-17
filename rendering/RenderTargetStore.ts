@@ -161,7 +161,7 @@ export default class RenderTargetStore {
 
 }
 
-function initMipmapArray(target: WebGLRenderTarget) {
+export function initMipmapArray(target: WebGLRenderTarget) {
 	const mipmapCount = Math.floor(Math.log2(Math.max(target.width, target.height))) + 1;
 	target.texture.mipmaps = new Array(mipmapCount).fill({});
 }
