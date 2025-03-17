@@ -1,6 +1,6 @@
+import { NamedConsole } from '@haxiomic-engine/NamedConsole';
 import { Express, NextFunction, Request, Response } from 'express';
 import { ZodError, ZodSchema } from 'zod';
-import { Logger } from '../Logger.js';
 
 /**
  * **Explicitly typed routes**
@@ -84,7 +84,7 @@ export function explicitRoutes<R extends InternalRouteMap>(
 	validators?: RouteValidators<R>,
 	middleware?: (req: Request, res: Response, next: NextFunction) => void
 ) {
-	const console = new Logger('<magenta,b>Explicit Express</>');
+	const console = new NamedConsole('<magenta,b>Explicit Express</>');
 
 	for (const path in handlers) {
 		const [method, route] = path.split(' ', 2) as [Method, string];
