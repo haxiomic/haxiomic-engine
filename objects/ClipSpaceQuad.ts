@@ -14,8 +14,15 @@ export default class ClipSpaceQuad<TMaterial extends Material> extends Mesh<Buff
 			-1,  1, 0, // Top-left
 			 1,  1, 0, // Top-right
 		];
+		const uvs = [
+			0, 0,
+			1, 0,
+			0, 1,
+			1, 1,
+		];
 		geom.setIndex(indices);
 		geom.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+		geom.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
 		return geom;
 	})();
 
