@@ -7,7 +7,7 @@ export type RingBufferTextureOptions = {
     format: PixelFormat, 
     type: TextureDataType,
     filtering?: MagnificationTextureFilter,
-    data?: BufferSource | null,
+    data?: ArrayBufferView | null,
     writeDirection?: -1 | 1,
 }
 
@@ -82,7 +82,7 @@ export class RingBufferTexture {
     /**
      * Write a row into the texture
      */
-    write(renderer: WebGLRenderer, data: BufferSource) {
+    write(renderer: WebGLRenderer, data: ArrayBufferView) {
         // upload data to the texture
         // create a new data texture for the row
         // use renderer copyTextureToTexture
