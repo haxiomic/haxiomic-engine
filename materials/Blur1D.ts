@@ -15,7 +15,7 @@ class Blur1D extends ShaderMaterial<{
 
 	static get(ctx: WebGLRenderingContext, kernel: number, truncationSigma: number, directionX: number, directionY: number, texture: Texture, width: number, height: number, textureLodLevel = 0): Blur1D {
 		kernel = Blur1D.nearestBestKernel(kernel);
-		const key = `${kernel}@${directionX}@${directionY}@${truncationSigma}`;
+		const key = `k${kernel},(${directionX},${directionY}):${truncationSigma}`;
 		let instance = Blur1D.instances.get(key);
 		if (!instance) {
 			instance = new Blur1D(ctx, kernel, truncationSigma, directionX, directionY, true);
