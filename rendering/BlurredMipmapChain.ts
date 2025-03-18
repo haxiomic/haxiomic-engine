@@ -72,7 +72,6 @@ export function generateBlurredMipmaps(
             target: blurredMipsXPong,
             targetMipmapLevel: blurredXMipmapLevel,
             shader: blurXShader,
-            viewport: _viewport.set(0, 0, width, height),
             restoreGlobalState: false,
         });
 
@@ -90,7 +89,6 @@ export function generateBlurredMipmaps(
         Rendering.shaderPass(renderer, {
             target: target,
             targetMipmapLevel: i,
-            viewport: _viewport.set(0, 0, width, height),
             restoreGlobalState: false,
             shader: blurYShader,
         });
@@ -118,5 +116,3 @@ function getRenderTargetStore(target: WebGLRenderTarget) {
     }
     return (target as any)[storeSymbol] as RenderTargetStore;
 }
-
-const _viewport = new Vector4();
