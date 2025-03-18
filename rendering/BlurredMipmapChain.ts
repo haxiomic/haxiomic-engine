@@ -1,7 +1,7 @@
 import Blur1D from "@haxiomic-engine/materials/Blur1D";
 import { Rendering } from "@haxiomic-engine/rendering/Rendering";
 import RenderTargetStore from "@haxiomic-engine/rendering/RenderTargetStore";
-import { LinearFilter, LinearMipmapNearestFilter, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
+import { LinearFilter, LinearMipmapNearestFilter, WebGLRenderer, WebGLRenderTarget } from "three";
 
 export function generateBlurredMipmaps(
     renderer: WebGLRenderer, 
@@ -34,6 +34,8 @@ export function generateBlurredMipmaps(
             minFilter: LinearMipmapNearestFilter,
             type: target.texture.type,
             format: target.texture.format,
+            wrapS: target.texture.wrapS,
+            wrapT: target.texture.wrapT,
             allocateMipmaps: true,
         }
     );
@@ -78,7 +80,7 @@ export function generateBlurredMipmaps(
         // render Y blur into the right mipmap level
         const blurYShader = Blur1D.get(
             gl, 
-            blurKernel_pixels,
+            blurKernel_pixels * .5,
             truncationSigma,
             0, 1,
             blurredMipsXPong.texture,
