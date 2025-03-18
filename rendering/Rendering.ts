@@ -126,12 +126,18 @@ export namespace Rendering {
 		renderer.toneMapping = options.toneMapping ?? NoToneMapping;
 		renderer.toneMappingExposure = options.toneMappingExposure ?? 1.0;
 
-		renderer.setRenderTarget(target, options.targetCubeFace, options.targetMipmapLevel);
+		const targetMipmapLevel = options.targetMipmapLevel ?? 0;
+
+		renderer.setRenderTarget(target, options.targetCubeFace, targetMipmapLevel);
 
 		if (viewport != null) {
 			renderer.setViewport(viewport.x, viewport.y, viewport.z, viewport.w);
 		} else if (target != null) {
-			renderer.setViewport(0, 0, target.width, target.height);
+			renderer.setViewport(
+				0, 0, 
+				Math.max(target.width >> targetMipmapLevel, 1),
+				Math.max(target.height >> targetMipmapLevel, 1)
+			);
 		} else {
 			let gl = renderer.getContext();
 			renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
