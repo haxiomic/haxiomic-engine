@@ -348,10 +348,10 @@ export class PhysicallyBasedViewer<
 			this.scene.add(devRoot);
 			devRoot.layers.set(Layer.Developer);
 
-			this.dev.textureVisualizer.position.x = 1.;
-			this.dev.textureVisualizer.position.y = -1.;
+			this.dev.textureVisualizer.root.position.x = 1.;
+			this.dev.textureVisualizer.root.position.y = -1.;
 
-			devRoot.add(this.dev.textureVisualizer);
+			devRoot.add(this.dev.textureVisualizer.root);
 
 			// add grid
 			this.dev.grid.layers.set(Layer.Developer);

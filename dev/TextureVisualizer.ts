@@ -1,74 +1,76 @@
-import { Blending, ColorRepresentation, DoubleSide, LinearFilter, LinearMipMapLinearFilter, MathUtils, Mesh, MeshBasicMaterial, Object3D, PlaneGeometry, RepeatWrapping, ShaderMaterial, Texture, Uniform, Vector2 } from "three";
+import { Blending, ColorRepresentation, DoubleSide, IUniform, LinearFilter, LinearMipMapLinearFilter, MathUtils, Mesh, MeshBasicMaterial, Object3D, PlaneGeometry, RepeatWrapping, ShaderMaterialParameters, Texture, Uniform, Vector2 } from "three";
 import { Layer } from "../Layer";
+import { ShaderMaterial } from "@haxiomic-engine/materials/ShaderMaterial";
 
-export class TextureVisualizer extends Object3D {
+export class TextureVisualizer {
 
-	texturePlanes = new Map<string, Mesh<PlaneGeometry, MeshBasicMaterial>>();
+	root: Object3D;
+	texturePlanes = new Map<string, Mesh<PlaneGeometry, TextureDisplayMaterial>>();
 	readonly gridWidth = 4;
 
 	constructor() {
-		super();
-		this.layers.set(Layer.Developer);
+		this.root = new Object3D();
+		this.root.layers.set(Layer.Developer);
 	}
 
-	displayTexture(id: string, texture: Texture) {
+	displayTexture(id: string, texture: Texture, swizzle: string = 'rgba') {
 		let texturePlane = this.texturePlanes.get(id);
 
 		if (texturePlane == null) {
-			// let material = new TextureDisplayMaterial(texture);
-			let material = new MeshBasicMaterial({
+			let material = new TextureDisplayMaterial({
 				map: texture,
 				side: DoubleSide,
 				fog: false,
 			});
 			texturePlane = new Mesh(new PlaneGeometry(1, 1), material);
-			texturePlane.onBeforeRender = (renderer, scene, camera, geometry, _material, group) => {
-				// renderer.getSize(material.uniforms.targetSize.value);
-			};
 			texturePlane.layers.set(Layer.Developer);
 			this.texturePlanes.set(id, texturePlane);
-			this.add(texturePlane);
+			this.root.add(texturePlane);
+
+			// show id in top left corner
+			let fontSizePx = 64;
+			let nameDisplay = this.generateTextCanvas(id, fontSizePx, `600 ${fontSizePx}px HelveticaNeue, "Helvetica Neue", Helvetica, sans-serif`, 0.1, true, 1024)!;
+			let textAspect = nameDisplay.textWidth / nameDisplay.textHeight;
+			let nameTexture = new Texture(nameDisplay?.canvas);
+			nameTexture.anisotropy = 16;
+			nameTexture.wrapT = RepeatWrapping;
+			nameTexture.wrapS = RepeatWrapping;
+			nameTexture.repeat.set(
+				nameDisplay.textWidth / nameDisplay.canvas.width,
+				nameDisplay.textHeight / nameDisplay.canvas.height
+			)
+			nameTexture.generateMipmaps = true;
+			nameTexture.minFilter = LinearMipMapLinearFilter;
+			nameTexture.magFilter = LinearFilter;
+			nameTexture.needsUpdate = true;
+
+			let namePlane = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({
+				map: nameTexture,
+				transparent: true,
+				depthWrite: false,
+				polygonOffset: true,
+
+				toneMapped: false,
+				fog: false,
+				side: DoubleSide,
+			}));
+			namePlane.layers.set(Layer.Developer);
+			namePlane.position.z = 0.01;
+			texturePlane.add(namePlane);
+
+			let nameHeight = 0.1;
+			namePlane.scale.set(nameHeight * textAspect * 0.5, nameHeight * 0.5, 1);
+			// position at bottom
+			namePlane.position.y = -0.5 + nameHeight * 0.5;
 		}
 
 		// texturePlane.material.uniforms.source.value = texture;
-		texturePlane.material.map = texture;
-
-		// show id in top left corner
-		let fontSizePx = 64;
-		let nameDisplay = this.generateTextCanvas(id, fontSizePx, `600 ${fontSizePx}px HelveticaNeue, "Helvetica Neue", Helvetica, sans-serif`, 0.1, true, 1024)!;
-		let textAspect = nameDisplay.textWidth / nameDisplay.textHeight;
-		let nameTexture = new Texture(nameDisplay?.canvas);
-		nameTexture.anisotropy = 16;
-		nameTexture.wrapT = RepeatWrapping;
-		nameTexture.wrapS = RepeatWrapping;
-		nameTexture.repeat.set(
-			nameDisplay.textWidth / nameDisplay.canvas.width,
-			nameDisplay.textHeight / nameDisplay.canvas.height
-		)
-		nameTexture.generateMipmaps = true;
-		nameTexture.minFilter = LinearMipMapLinearFilter;
-		nameTexture.magFilter = LinearFilter;
-		nameTexture.needsUpdate = true;
-
-		let namePlane = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({
-			map: nameTexture,
-			transparent: true,
-			depthWrite: false,
-			polygonOffset: true,
-			
-			toneMapped: false,
-			fog: false,
-			side: DoubleSide,
-		}));
-		namePlane.layers.set(Layer.Developer);
-		namePlane.position.z = 0.01;
-		texturePlane.add(namePlane);
-
-		let nameHeight = 0.1;
-		namePlane.scale.set(nameHeight * textAspect * 0.5, nameHeight * 0.5, 1);
-		// position at bottom
-		namePlane.position.y = -0.5 + nameHeight * 0.5;
-
+		texturePlane.material.uniforms.source.value = texture;
+		let swizzleChanged = texturePlane.material.defines.SWIZZLE !== swizzle;
+		texturePlane.material.defines.SWIZZLE = swizzle;
+		if (swizzleChanged) {
+			texturePlane.material.needsUpdate = true;
+		}
 
 		this.layout();
 	}
@@ -76,7 +78,7 @@ export class TextureVisualizer extends Object3D {
 	removeTexture(id: string) {
 		let texturePlane = this.texturePlanes.get(id);
 		if (texturePlane != null) {
-			this.remove(texturePlane);
+			this.root.remove(texturePlane);
 			this.texturePlanes.delete(id);
 		}
 		this.layout();
@@ -185,50 +187,50 @@ export class TextureVisualizer extends Object3D {
 
 }
 
-class TextureDisplayMaterial extends ShaderMaterial {
-
-	uniforms: {
-		source: Uniform;
-		targetSize: Uniform;
-	};
+class TextureDisplayMaterial extends ShaderMaterial<{ source: Uniform<Texture | null> }> {
 	
-	constructor(texture: Texture, params?: {
-		transparent?: boolean;
-		color?: ColorRepresentation,
-		blending?: Blending,
-	}) {
+	constructor(params?: {
+		map: Texture
+	} & Omit<ShaderMaterialParameters, 'uniforms'>) {
+		const { map, ...rest } = params || {};
 		super({
-			vertexShader: `
-				uniform vec2 targetSize;
-
+			uniforms: {
+				source: new Uniform(params?.map || null),
+			},
+			defines: {
+				SWIZZLE: 'rgba',
+			},
+			vertexShader: /*glsl*/`
 				varying vec2 vUv;
 				void main() {
 					vUv = uv;
 
-					vec4 p = vec4( position, 1.0 );
-					vec4 worldP = modelMatrix * p;
+					vec4 world = modelMatrix * vec4( position, 1.0 );
+					vec4 view = viewMatrix * world;
+					vec4 clip = projectionMatrix * view;
 
-					vec4 viewP = viewMatrix * worldP;
-					vec4 clipP = projectionMatrix * viewP;
-
-					gl_Position = clipP;
+					gl_Position = clip;
 				}
 			`,
-			fragmentShader: `
-				precision highp float;
+			fragmentShader: /*glsl*/`
 				uniform sampler2D source;
+
 				varying vec2 vUv;
+
+				#include <common>
+				#include <dithering_pars_fragment>
+
 				void main() {
-					gl_FragColor = texture2D(source, vUv);
+					gl_FragColor = texture2D(source, vUv).SWIZZLE;
+
+					#include <tonemapping_fragment>
+					#include <colorspace_fragment>
+					#include <premultiplied_alpha_fragment>
+					#include <dithering_fragment>
 				}
 			`,
-			...params
+			...rest
 		});
-
-		this.uniforms = {
-			source: new Uniform(texture),
-			targetSize: new Uniform(new Vector2(1, 1)),
-		}
 	}
 
 }
