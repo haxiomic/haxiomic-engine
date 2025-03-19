@@ -258,7 +258,7 @@ export namespace Rendering {
 	export type BlitOptions = {
 		source: Texture,
 		target: WebGLRenderTarget | null,
-		/** if true, three.js renderer.outputColorSpace or target.texture.colorSpace will be respected for the copy */
+		/** if true, three.js renderer.outputColorSpace or target.texture.colorSpace will be respected for the copy. Default false */
 		applyOutputColorSpace?: boolean,
 		toneMapping?: ToneMapping,
 		toneMappingExposure?: number,
