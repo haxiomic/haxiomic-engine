@@ -144,6 +144,19 @@ export default class RenderTargetStore {
 		this._renderTargets = {};
 	}
 
+	static getStoreForRenderTarget(target: WebGLRenderTarget) {
+		let store: RenderTargetStore = (target as any)[storeSymbol];
+		if (store == null) {
+			store = new RenderTargetStore();
+			(target as any)[storeSymbol] = store;
+			// dispose store when target is disposed
+			target.addEventListener('dispose', () => {
+				store.clearAndDispose();
+			});
+		}
+		return store;
+	}
+
 	static getOptionsFromRenderTarget(target: WebGLRenderTarget): RenderTargetStoreOptions {
 		return {
 			powerOfTwoMode: PowerOfTwoMode.None,
@@ -161,13 +174,15 @@ export default class RenderTargetStore {
 
 }
 
+const storeSymbol = Symbol('RenderTargetStore');
+
 export function initMipmapArray(target: WebGLRenderTarget) {
 	const mipmapCount = Math.floor(Math.log2(Math.max(target.width, target.height))) + 1;
 	target.texture.mipmaps = new Array(mipmapCount).fill({});
 }
 
 function nearestPowerOfTwo(value: number) {
-    const exponent = Math.round(Math.log2(value));
-    const powerOfTwo = Math.pow(2, exponent);
-    return powerOfTwo;
+	const exponent = Math.round(Math.log2(value));
+	const powerOfTwo = Math.pow(2, exponent);
+	return powerOfTwo;
 }

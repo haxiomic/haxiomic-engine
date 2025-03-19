@@ -26,7 +26,7 @@ export function generateBlurredMipmaps(
     }
 
     // we'll need a ping-pong target to render x-blur pass
-    let blurredMipsXPong = getRenderTargetStore(target).getRenderTarget(
+    const blurredMipsXPong = RenderTargetStore.getStoreForRenderTarget(target).getRenderTarget(
         'x-pass',
         Math.floor(target.width * 0.5), Math.floor(target.height * 0.5),
         {
@@ -104,17 +104,4 @@ export function generateBlurredMipmaps(
     if (restoreGlobalState) {
         Rendering.restoreGlobalState(renderer);
     }
-}
-
-const storeSymbol = Symbol('generateBlurredMipmaps().RenderTargetStore');
-function getRenderTargetStore(target: WebGLRenderTarget) {
-    if ((target as any)[storeSymbol] == null) {
-        const store = new RenderTargetStore();
-        (target as any)[storeSymbol] = store;
-        // dispose store when target is disposed
-        target.addEventListener('dispose', () => {
-            store.clearAndDispose();
-        });
-    }
-    return (target as any)[storeSymbol] as RenderTargetStore;
 }
