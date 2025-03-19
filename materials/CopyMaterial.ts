@@ -31,6 +31,8 @@ export class CopyMaterial extends RawShaderMaterial {
 				}
 			`,
 			side: DoubleSide,
+			depthWrite: false,
+			depthTest: false,
 		});
 	}
 
