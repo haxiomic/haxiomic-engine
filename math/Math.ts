@@ -24,3 +24,11 @@ export function fract(x: number) {
 export function mod(a: number, b: number) {
     return ((a % b) + b) % b;
 }
+
+export function mipmapCount(width: number, height: number) {
+    return Math.floor(Math.log2(Math.max(width, height))) + 1;
+}
+
+export function mipmapDimension(widthOrHeight: number, level: number) {
+    return Math.max(1, widthOrHeight >> level)
+}
