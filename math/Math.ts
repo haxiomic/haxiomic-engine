@@ -32,3 +32,9 @@ export function mipmapCount(width: number, height: number) {
 export function mipmapDimension(widthOrHeight: number, level: number) {
     return Math.max(1, widthOrHeight >> level)
 }
+
+export function nearestPowerOfTwo(value: number) {
+	const exponent = Math.round(Math.log2(value));
+	const powerOfTwo = Math.pow(2, exponent);
+	return powerOfTwo;
+}

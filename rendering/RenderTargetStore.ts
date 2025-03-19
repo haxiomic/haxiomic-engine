@@ -1,3 +1,4 @@
+import { nearestPowerOfTwo } from '@haxiomic-engine/math/Math';
 import { AnyPixelFormat, ClampToEdgeWrapping, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderTarget, Wrapping } from 'three';
 
 export enum PowerOfTwoMode {
@@ -179,10 +180,4 @@ const storeSymbol = Symbol('RenderTargetStore');
 export function initMipmapArray(target: WebGLRenderTarget) {
 	const mipmapCount = Math.floor(Math.log2(Math.max(target.width, target.height))) + 1;
 	target.texture.mipmaps = new Array(mipmapCount).fill({});
-}
-
-function nearestPowerOfTwo(value: number) {
-	const exponent = Math.round(Math.log2(value));
-	const powerOfTwo = Math.pow(2, exponent);
-	return powerOfTwo;
 }
