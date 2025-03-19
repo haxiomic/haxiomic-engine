@@ -1,6 +1,8 @@
-import { Camera, Color, ColorRepresentation, DoubleSide, FrontSide, Layers, Material, MeshBasicMaterial, NoToneMapping, OrthographicCamera, Scene, ShaderMaterial, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
+import { Camera, Color, ColorRepresentation, DoubleSide, FrontSide, IUniform, Layers, Material, MeshBasicMaterial, NoToneMapping, OrthographicCamera, Scene, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
 import { CopyMaterial } from "../materials/CopyMaterial";
 import ClipSpaceTriangle from "../objects/ClipSpaceTriangle";
+import { ShaderMaterial } from "@haxiomic-engine/materials/ShaderMaterial";
+import { RawShaderMaterial } from "@haxiomic-engine/materials/RawShaderMaterial";
 
 export namespace Rendering {
 
@@ -193,11 +195,20 @@ export namespace Rendering {
 	};
 	fragmentPassScene.add(fragmentPassMesh);
 
-	export type ShaderPassOptions = {
+	// Helper type to extract the value type from an IUniform
+	type UniformValue<T> = T extends IUniform<infer V> ? V : never
+
+	// Helper type to transform a record of IUniforms to a record of their values
+	type UniformValues<U extends Record<string, IUniform>> = {
+		[K in keyof U]: UniformValue<U[K]>
+	}
+
+	export type ShaderPassOptions<U extends Record<string, IUniform> = Record<string, IUniform>> = {
 		target: WebGLRenderTarget | null,
 		targetMipmapLevel?: number,
 		targetCubeFace?: number,
-		shader: Material,
+		shader: Material | ShaderMaterial<U> | RawShaderMaterial<U>,
+		uniforms?: UniformValues<U>,
 		restoreGlobalState: boolean,
 		viewport?: Vector4,
 		toneMapping?: ToneMapping,
@@ -218,7 +229,12 @@ export namespace Rendering {
 		 */
 		clearStencil?: boolean,
 	}
-	export function shaderPass(renderer: WebGLRenderer, options: ShaderPassOptions) {
+	export function shaderPass<U extends Record<string, IUniform>>(renderer: WebGLRenderer, options: ShaderPassOptions<U>) {
+		if (options.uniforms != null) {
+			for (let key in options.uniforms) {
+				(options.shader as any).uniforms[key].value = options.uniforms[key];
+			}
+		}
 		renderPass(renderer, {
 			target: options.target,
 			targetMipmapLevel: options.targetMipmapLevel,
