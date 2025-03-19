@@ -1,5 +1,5 @@
 import { Camera, Color, ColorRepresentation, DoubleSide, FrontSide, IUniform, Layers, Material, MeshBasicMaterial, NoToneMapping, OrthographicCamera, Scene, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
-import { CopyMaterial } from "../materials/CopyMaterial";
+import { CopyMaterial, RawCopyMaterial, RGBASwizzle } from "../materials/CopyMaterial";
 import ClipSpaceTriangle from "../objects/ClipSpaceTriangle";
 import { ShaderMaterial } from "@haxiomic-engine/materials/ShaderMaterial";
 import { RawShaderMaterial } from "@haxiomic-engine/materials/RawShaderMaterial";
@@ -257,7 +257,9 @@ export namespace Rendering {
 
 	export type BlitOptions = {
 		source: Texture,
+		sourceMipmapLevel?: number,
 		target: WebGLRenderTarget | null,
+		swizzle?: RGBASwizzle,
 		/** if true, three.js renderer.outputColorSpace or target.texture.colorSpace will be respected for the copy. Default false */
 		applyOutputColorSpace?: boolean,
 		toneMapping?: ToneMapping,
@@ -269,26 +271,47 @@ export namespace Rendering {
 		clear?: boolean,
 	}
 
-	const rawCopyMaterial = new CopyMaterial();
-	const threeCopyMaterial = new MeshBasicMaterial({
-		map: null,
-		color: 0xffffff,
-		side: FrontSide,
-		depthTest: false,
-		depthWrite: false,
-	});
+	const rawCopyMaterials: { [swizzle: string]: RawCopyMaterial } = {
+		'': new RawCopyMaterial(),
+	}
+	const copyMaterials: { [swizzle: string]: CopyMaterial } = {
+		'': new CopyMaterial(),
+	}
 	/**
 	 * Copy texture to target using fragment shader pass
 	 */
 	export function blit(renderer: WebGLRenderer, options: BlitOptions) {
-		rawCopyMaterial.uniforms.source.value = options.source;
-		threeCopyMaterial.map = options.source;
+		const swizzle = options.swizzle ?? '';
+		const colorTransformRequired = options.applyOutputColorSpace || options.toneMapping;
+		
+		let shader: Material;
+
+		if (colorTransformRequired) {
+			let copyMaterial = copyMaterials[swizzle];
+			if (copyMaterial == null) {
+				copyMaterial = new CopyMaterial(swizzle);
+				copyMaterials[swizzle] = copyMaterial;
+			}
+			copyMaterial.uniforms.source.value = options.source;
+			copyMaterial.uniforms.sourceMipmapLevel.value = options.sourceMipmapLevel ?? 0;
+			shader = copyMaterial;
+		} else {
+			let rawCopyMaterial = rawCopyMaterials[swizzle];
+			if (rawCopyMaterial == null) {
+				rawCopyMaterial = new RawCopyMaterial(swizzle);
+				rawCopyMaterials[swizzle] = rawCopyMaterial;
+			}
+			rawCopyMaterial.uniforms.source.value = options.source;
+			rawCopyMaterial.uniforms.sourceMipmapLevel.value = options.sourceMipmapLevel ?? 0;
+			shader = rawCopyMaterial;
+		}
+		
 		shaderPass(renderer, {
+			shader,
 			target: options.target,
 			targetMipmapLevel: options.targetMipmapLevel,
 			targetCubeFace: options.targetCubeFace,
 			viewport: options.viewport,
-			shader: options.applyOutputColorSpace ? threeCopyMaterial : rawCopyMaterial,
 			toneMapping: options.toneMapping,
 			toneMappingExposure: options.toneMappingExposure,
 			restoreGlobalState: options.restoreGlobalState,
@@ -296,8 +319,6 @@ export namespace Rendering {
 			clearDepth: options.clear != null ? options.clear : false,
 			clearStencil: options.clear != null ? options.clear : false,
 		});
-		threeCopyMaterial.map = null;
-		rawCopyMaterial.uniforms.source.value = null;
 	}
 
 	export type ClearOptions = {

@@ -1,6 +1,7 @@
 import { Blending, ColorRepresentation, DoubleSide, IUniform, LinearFilter, LinearMipMapLinearFilter, MathUtils, Mesh, MeshBasicMaterial, Object3D, PlaneGeometry, RepeatWrapping, ShaderMaterialParameters, Texture, Uniform, Vector2 } from "three";
 import { Layer } from "../Layer";
 import { ShaderMaterial } from "@haxiomic-engine/materials/ShaderMaterial";
+import { RGBASwizzle } from "@haxiomic-engine/materials/CopyMaterial";
 
 export class TextureVisualizer {
 
@@ -13,7 +14,7 @@ export class TextureVisualizer {
 		this.root.layers.set(Layer.Developer);
 	}
 
-	displayTexture(id: string, texture: Texture, swizzle: string = 'rgba') {
+	displayTexture(id: string, texture: Texture, lodLevel: number = 0, swizzle: RGBASwizzle = '') {
 		let texturePlane = this.texturePlanes.get(id);
 
 		if (texturePlane == null) {
@@ -64,13 +65,7 @@ export class TextureVisualizer {
 			namePlane.position.y = -0.5 + nameHeight * 0.5;
 		}
 
-		// texturePlane.material.uniforms.source.value = texture;
-		texturePlane.material.uniforms.source.value = texture;
-		let swizzleChanged = texturePlane.material.defines.SWIZZLE !== swizzle;
-		texturePlane.material.defines.SWIZZLE = swizzle;
-		if (swizzleChanged) {
-			texturePlane.material.needsUpdate = true;
-		}
+		texturePlane.material.set(texture, lodLevel, swizzle);
 
 		this.layout();
 	}
@@ -187,18 +182,25 @@ export class TextureVisualizer {
 
 }
 
-class TextureDisplayMaterial extends ShaderMaterial<{ source: Uniform<Texture | null> }> {
+class TextureDisplayMaterial extends ShaderMaterial<
+	{
+		source: Uniform<Texture | null>
+		lodLevel: Uniform<number>
+	}, {
+		SWIZZLE: RGBASwizzle
+	}> {
 	
 	constructor(params?: {
 		map: Texture
-	} & Omit<ShaderMaterialParameters, 'uniforms'>) {
+	} & Omit<ShaderMaterialParameters, 'uniforms' | 'defines'>) {
 		const { map, ...rest } = params || {};
 		super({
 			uniforms: {
 				source: new Uniform(params?.map || null),
+				lodLevel: new Uniform(0),
 			},
 			defines: {
-				SWIZZLE: 'rgba',
+				SWIZZLE: '.rgba',
 			},
 			vertexShader: /*glsl*/`
 				varying vec2 vUv;
@@ -214,6 +216,7 @@ class TextureDisplayMaterial extends ShaderMaterial<{ source: Uniform<Texture | 
 			`,
 			fragmentShader: /*glsl*/`
 				uniform sampler2D source;
+				uniform float lodLevel;
 
 				varying vec2 vUv;
 
@@ -221,7 +224,7 @@ class TextureDisplayMaterial extends ShaderMaterial<{ source: Uniform<Texture | 
 				#include <dithering_pars_fragment>
 
 				void main() {
-					gl_FragColor = texture2D(source, vUv).SWIZZLE;
+					gl_FragColor = textureLod(source, vUv, lodLevel)SWIZZLE;
 
 					#include <tonemapping_fragment>
 					#include <colorspace_fragment>
@@ -231,6 +234,16 @@ class TextureDisplayMaterial extends ShaderMaterial<{ source: Uniform<Texture | 
 			`,
 			...rest
 		});
+	}
+
+	set(texture: Texture, lodLevel: number, swizzle: RGBASwizzle = '') {
+		this.uniforms.source.value = texture;
+		this.uniforms.lodLevel.value = lodLevel;
+		let definesChanged = this.defines.SWIZZLE !== swizzle;
+		if (definesChanged) {
+			this.defines.SWIZZLE = swizzle;
+			this.needsUpdate = true;
+		}
 	}
 
 }

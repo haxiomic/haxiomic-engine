@@ -5,11 +5,20 @@
 import { IUniform, ShaderMaterial as ShaderMaterialBase, ShaderMaterialParameters } from "three";
 
 type UniformsRecord = Record<string, IUniform<any>>;
+type DefinesRecord = Record<string, string>;
 
-export class ShaderMaterial<T extends UniformsRecord = any> extends ShaderMaterialBase {
-  declare uniforms: T;
+export class ShaderMaterial<
+  U extends UniformsRecord = any,
+  D extends DefinesRecord = any,
+> extends ShaderMaterialBase {
+  
+  declare uniforms: U;
+  declare defines: D;
 
-  constructor(parameters: Omit<ShaderMaterialParameters, 'uniforms'> & { uniforms: T }) {
+  constructor(parameters: Omit<ShaderMaterialParameters, 'uniforms' | 'defines'> & {
+    uniforms: U,
+    defines?: D,
+  }) {
     super(parameters);
   }
 }

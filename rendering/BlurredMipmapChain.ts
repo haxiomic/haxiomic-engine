@@ -1,4 +1,5 @@
 import Blur1D from "@haxiomic-engine/materials/Blur1D";
+import { mipmapCount } from "@haxiomic-engine/math/Math";
 import { Rendering } from "@haxiomic-engine/rendering/Rendering";
 import RenderTargetStore from "@haxiomic-engine/rendering/RenderTargetStore";
 import { LinearFilter, LinearMipmapNearestFilter, WebGLRenderer, WebGLRenderTarget } from "three";
@@ -21,8 +22,7 @@ export function generateBlurredMipmaps(
 
     // allocate mipmap chain if it doesn't exist
     if (target.texture.mipmaps == null) {
-        const mipmapCount = Math.floor(Math.log2(Math.max(target.width, target.height))) + 1;
-        target.texture.mipmaps = new Array(mipmapCount).fill({});
+        target.texture.mipmaps = new Array(mipmapCount(target.width, target.height)).fill({});
     }
 
     // we'll need a ping-pong target to render x-blur pass
