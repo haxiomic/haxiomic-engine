@@ -524,12 +524,12 @@ export class PhysicallyBasedViewer<
 
 	dispose = () => {
 		Console.log(`${this.logTag}: dispose()</>`);
-		this.renderer.dispose();
 		window.cancelAnimationFrame(this.frameLoopHandle);
 		this.interactionManager.removeEventListeners();
 		this.threeInteraction.dispose();
 		this.events.dispose.dispatch();
 		this.renderTargetStore.clearAndDispose();
+		this.renderer.dispose();
 	}
 
 	protected _loadEnvironmentPromise: Promise<any> = Promise.resolve(null);
