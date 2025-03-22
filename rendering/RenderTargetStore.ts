@@ -29,6 +29,7 @@ export type RenderTargetStoreOptions = {
 	format?: AnyPixelFormat,
 	colorSpace?: string,
 	allocateMipmaps?: boolean,
+	anisotropy?: number,
 }
 
 export default class RenderTargetStore {
@@ -36,14 +37,17 @@ export default class RenderTargetStore {
 	static defaultOptions: RenderTargetStoreOptions = {
 		powerOfTwoMode: PowerOfTwoMode.None,
 		depthBuffer: false,
+		depthTexture: undefined,
 		type: UnsignedByteType,
 		magFilter: LinearFilter,
 		minFilter: LinearFilter,
 		msaaSamples: 0,
+		anisotropy: 0,
 		wrapS: ClampToEdgeWrapping,
 		wrapT: ClampToEdgeWrapping,
-		format: undefined,
+		format: RGBAFormat,
 		allocateMipmaps: false,
+		colorSpace: NoColorSpace,
 	}
 
 	_renderTargets: { [key: string]: RenderTarget } = {};
@@ -85,8 +89,8 @@ export default class RenderTargetStore {
 			const defaultOptions = RenderTargetStore.defaultOptions;
 			// console.info(`RenderTargetStore creating render target ${name}`);
 			target = new WebGLRenderTarget(textureWidth, textureHeight, {
-				colorSpace: options?.colorSpace ?? NoColorSpace,
-				anisotropy: 0,
+				colorSpace: options?.colorSpace ?? defaultOptions.colorSpace,
+				anisotropy: options?.anisotropy ?? defaultOptions.anisotropy,
 				generateMipmaps: false,
 				stencilBuffer: false,
 				depthBuffer: options?.depthBuffer ?? defaultOptions.depthBuffer,
@@ -117,6 +121,7 @@ export default class RenderTargetStore {
 				target.texture.minFilter = options.minFilter ?? target.texture.minFilter
 				target.texture.wrapS = options.wrapS ?? target.texture.wrapS;
 				target.texture.wrapT = options.wrapT ?? target.texture.wrapT;
+				target.texture.anisotropy = options.anisotropy ?? target.texture.anisotropy;
 				target.samples = options.msaaSamples ?? target.samples;
 				target.texture.colorSpace = options.colorSpace ?? target.texture.colorSpace;
 				target.depthBuffer = options.depthBuffer ?? false;
@@ -167,6 +172,7 @@ export default class RenderTargetStore {
 		return {
 			powerOfTwoMode: PowerOfTwoMode.None,
 			depthBuffer: target.depthBuffer,
+			depthTexture: target.depthTexture ?? undefined,
 			type: target.texture.type,
 			magFilter: target.texture.magFilter,
 			minFilter: target.texture.minFilter,
