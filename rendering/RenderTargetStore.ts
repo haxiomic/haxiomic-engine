@@ -1,5 +1,5 @@
 import { nearestPowerOfTwo } from '@haxiomic-engine/math/Math';
-import { AnyPixelFormat, ClampToEdgeWrapping, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderTarget, Wrapping } from 'three';
+import { AnyPixelFormat, ClampToEdgeWrapping, DepthTexture, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderTarget, Wrapping } from 'three';
 
 export enum PowerOfTwoMode {
 	None,
@@ -19,6 +19,7 @@ type RenderTarget = WebGLRenderTarget & {
 export type RenderTargetStoreOptions = {
 	powerOfTwoMode?: PowerOfTwoMode,
 	depthBuffer?: boolean,
+	depthTexture?: DepthTexture,
 	type: TextureDataType,
 	magFilter: MagnificationTextureFilter,
 	minFilter?: MinificationTextureFilter,
@@ -26,6 +27,7 @@ export type RenderTargetStoreOptions = {
 	wrapS?: Wrapping,
 	wrapT?: Wrapping,
 	format?: AnyPixelFormat,
+	colorSpace?: string,
 	allocateMipmaps?: boolean,
 }
 
@@ -83,11 +85,12 @@ export default class RenderTargetStore {
 			const defaultOptions = RenderTargetStore.defaultOptions;
 			// console.info(`RenderTargetStore creating render target ${name}`);
 			target = new WebGLRenderTarget(textureWidth, textureHeight, {
-				colorSpace: NoColorSpace,
+				colorSpace: options?.colorSpace ?? NoColorSpace,
 				anisotropy: 0,
 				generateMipmaps: false,
 				stencilBuffer: false,
 				depthBuffer: options?.depthBuffer ?? defaultOptions.depthBuffer,
+				depthTexture: options?.depthTexture ?? null,
 				type: options?.type ?? defaultOptions.type,
 				format: options?.format ?? defaultOptions.format,
 				magFilter: options?.magFilter ?? defaultOptions.magFilter,
@@ -115,7 +118,9 @@ export default class RenderTargetStore {
 				target.texture.wrapS = options.wrapS ?? target.texture.wrapS;
 				target.texture.wrapT = options.wrapT ?? target.texture.wrapT;
 				target.samples = options.msaaSamples ?? target.samples;
+				target.texture.colorSpace = options.colorSpace ?? target.texture.colorSpace;
 				target.depthBuffer = options.depthBuffer ?? false;
+				target.depthTexture = options.depthTexture ?? target.depthTexture;
 			}
 
 			// resize if needed
