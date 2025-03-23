@@ -9,16 +9,14 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
-  "devDependencies": {
+  "dependencies": {
     "@types/express": "^5.0.0",
     "@types/react": "^19.0.12",
     "@types/three": "^0.173.0",
     "find-cache-dir": "^5.0.0",
     "typescript": "^5.7.2",
     "webpack-glsl-minify": "^1.5.0",
-    "esbuild": "^0.24.2"
-  },
-  "dependencies": {
+    "esbuild": "^0.24.2",
     "three": "npm:@haxiomic/three-dev@^0.174.0",
     "zod": "^3.24.2"
   },
