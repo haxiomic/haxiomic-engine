@@ -15,5 +15,11 @@
     "three": "npm:@haxiomic/three-dev@^0.174.0",
     "typescript": "^5.7.2",
     "@types/express": "^5.0.0"
+  },
+  "exports": {
+    "./*": "./*.ts",
+    "./**/*": "./**/*.ts",
+    "./*.tsx": "./*.tsx",
+    "./**/*.tsx": "./**/*.tsx"
   }
 }
