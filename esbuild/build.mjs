@@ -8,7 +8,7 @@ import compileTimePlugin from './compile-time.mjs';
 /**
  * Build with glsl, compile-time and inline worker plugins
  * 
- * @param {import('esbuild').BuildOptions & { devMode: boolean }} buildOptions 
+ * @param {import('esbuild').BuildOptions & { devMode?: boolean }} buildOptions 
  * @returns 
  */
 export function build({ devMode, ...buildOptions }) {
