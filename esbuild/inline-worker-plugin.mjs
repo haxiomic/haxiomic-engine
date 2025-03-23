@@ -1,3 +1,5 @@
+// @ts-check
+
 // adapted from https://github.com/mitschabaude/esbuild-plugin-inline-worker
 import esbuild from 'esbuild';
 import findCacheDir from 'find-cache-dir';
@@ -56,7 +58,7 @@ function inlineWorkerPlugin(extraConfig) {
 let cacheDir = findCacheDir({
 	name: 'esbuild-plugin-inline-worker',
 	create: true,
-});
+}) ?? path.resolve(__dirname, '.cache');
 
 async function buildWorker(workerPath, extraConfig) {
 	let scriptNameParts = path.basename(workerPath).split('.');

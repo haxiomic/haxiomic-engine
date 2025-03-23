@@ -1,3 +1,5 @@
+// @ts-check
+
 import esbuild from 'esbuild';
 import findCacheDir from 'find-cache-dir';
 import path from 'path';
@@ -49,7 +51,7 @@ const compileTimePlugin = (esbuildConfig = {}) => ({
 let cacheDir = findCacheDir({
     name: 'esbuild-plugin-compile-time',
     create: true,
-});
+}) ?? path.resolve(__dirname, '.cache');
 
 /**
  * If the compile time script is typescript, we use esbuild to compile it first

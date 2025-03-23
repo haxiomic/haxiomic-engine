@@ -1,3 +1,5 @@
+// @ts-check
+
 import fs from 'fs';
 import path from 'path';
 import { GlslMinify } from 'webpack-glsl-minify/build/minify.js';
@@ -31,8 +33,8 @@ const glslMinifyPlugin = (options) => ({
 					nomangle: noMangleList,
 				},
 				// to handle imports within the shader
-				(filename, directory) => {
-					let filePath = path.concat(directory, filename);
+				async (filename, directory) => {
+					let filePath = directory ? path.join(directory, filename) : filename;
 					return {
 						path: filePath,
 						contents: fs.readFileSync(filePath, 'utf8'),
