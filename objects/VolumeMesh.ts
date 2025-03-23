@@ -3,7 +3,7 @@
  */
 
 import { CustomBlending, FrontSide, IUniform, Matrix4, NormalBlending, OneFactor, ShaderLib, ShaderMaterialParameters, Uniform, Vector3, Vector4 } from "three";
-import { ShaderMaterial } from "../materials/ShaderMaterial";
+import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 
 type VolumeMeshMaterialUniforms = {
     cameraToModelMatrix: Uniform<Matrix4>,

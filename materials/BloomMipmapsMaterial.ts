@@ -1,5 +1,5 @@
 import { Texture, Uniform } from "three";
-import { ShaderMaterial } from "./ShaderMaterial";
+import { ShaderMaterial } from "./ShaderMaterial.js";
 
 /**
  * Blends mipmaps over level 0

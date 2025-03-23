@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Animator } from "../animation/Animator";
+import { Animator } from "../animation/Animator.js";
 
 /**
  * Returns an instance of Animator running an interval loop

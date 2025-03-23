@@ -1,7 +1,7 @@
 import { ClampToEdgeWrapping, LinearFilter, Texture, WebGLRenderTarget, WebGLRenderer, Wrapping } from "three";
-import RenderTargetStore, { RenderTargetStoreOptions } from "./RenderTargetStore";
-import Blur1D from "../materials/Blur1D";
-import { Rendering } from "./Rendering";
+import RenderTargetStore, { RenderTargetStoreOptions } from "./RenderTargetStore.js";
+import Blur1D from "../materials/Blur1D.js";
+import { Rendering } from "./Rendering.js";
 
 export function gaussianBlur(
 	renderer: WebGLRenderer,

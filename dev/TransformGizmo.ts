@@ -1,9 +1,9 @@
 import { BackSide, BufferGeometry, Camera, Color, ColorRepresentation, ConeGeometry, CylinderGeometry, Matrix4, Mesh, MeshBasicMaterial, Object3D, Plane, Quaternion, Ray, Raycaster, Scene, TorusGeometry, Vector3, Vector4, WebGLRenderer } from "three";
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { EventEmitter } from "../EventEmitter";
-import { Animator } from "../animation/Animator";
-import { Spring } from "../animation/Spring";
-import { makeInteractive } from "../interaction/ThreeInteraction";
+import { EventEmitter } from "../EventEmitter.js";
+import { Animator } from "../animation/Animator.js";
+import { Spring } from "../animation/Spring.js";
+import { makeInteractive } from "../interaction/ThreeInteraction.js";
 
 const springStyle = Spring.Exponential(0.05)
 export type TransformName = 'translateX' | 'translateY' | 'translateZ' | 'rotateX' | 'rotateY' | 'rotateZ' | 'scaleX' | 'scaleY' | 'scaleZ'

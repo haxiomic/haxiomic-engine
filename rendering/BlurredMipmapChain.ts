@@ -1,7 +1,7 @@
-import Blur1D from "../materials/Blur1D";
-import { mipmapCount } from "../math/Math";
-import { Rendering } from "./Rendering";
-import RenderTargetStore from "./RenderTargetStore";
+import Blur1D from "../materials/Blur1D.js";
+import { mipmapCount } from "../math/Math.js";
+import { Rendering } from "./Rendering.js";
+import RenderTargetStore from "./RenderTargetStore.js";
 import { LinearFilter, LinearMipmapNearestFilter, WebGLRenderer, WebGLRenderTarget } from "three";
 
 export function generateBlurredMipmaps(

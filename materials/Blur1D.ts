@@ -1,6 +1,6 @@
 import { Texture, Uniform, Vector2 } from 'three';
-import { RawShaderMaterial } from './RawShaderMaterial';
-import { ShaderMaterial } from './ShaderMaterial';
+import { RawShaderMaterial } from './RawShaderMaterial.js';
+import { ShaderMaterial } from './ShaderMaterial.js';
 
 /**
 	@author haxiomic

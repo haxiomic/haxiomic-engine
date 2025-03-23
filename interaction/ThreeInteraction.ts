@@ -1,7 +1,7 @@
 import { Camera, Intersection, Object3D, Ray, Raycaster, Scene, Vector2 } from "three"
-import { EventEmitter } from "../EventEmitter";
-import InteractionManager from "./InteractionManager";
-import { Layer } from "../Layer";
+import { EventEmitter } from "../EventEmitter.js";
+import InteractionManager from "./InteractionManager.js";
+import { Layer } from "../Layer.js";
 
 export type PointerEventExtended = EventEmitter.Emitted<PointerEvent>;
 

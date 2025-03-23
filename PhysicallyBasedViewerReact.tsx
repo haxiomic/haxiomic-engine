@@ -1,6 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { CineonToneMapping } from 'three';
-import { PhysicallyBasedViewer, PhysicallyBasedViewerOptions } from './PhysicallyBasedViewer';
+import { PhysicallyBasedViewer, PhysicallyBasedViewerOptions } from './PhysicallyBasedViewer.js';
 
 interface ViewerProps extends React.HTMLProps<HTMLDivElement> {
     options?: Partial<PhysicallyBasedViewerOptions>;

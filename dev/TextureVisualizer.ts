@@ -1,7 +1,7 @@
 import { Blending, ColorRepresentation, DoubleSide, IUniform, LinearFilter, LinearMipMapLinearFilter, MathUtils, Mesh, MeshBasicMaterial, Object3D, PlaneGeometry, RepeatWrapping, ShaderMaterialParameters, Texture, Uniform, Vector2 } from "three";
-import { Layer } from "../Layer";
-import { RGBASwizzle } from "../materials/CopyMaterial";
-import { ShaderMaterial } from "../materials/ShaderMaterial";
+import { Layer } from "../Layer.js";
+import { RGBASwizzle } from "../materials/CopyMaterial.js";
+import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 
 export class TextureVisualizer {
 

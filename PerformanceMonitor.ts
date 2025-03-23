@@ -1,5 +1,5 @@
-import { Animator } from "./animation/Animator";
-import { Spring } from "./animation/Spring";
+import { Animator } from "./animation/Animator.js";
+import { Spring } from "./animation/Spring.js";
 
 export type PerformanceMonitorOptions = {
     smoothingHalfLife_s?: number;

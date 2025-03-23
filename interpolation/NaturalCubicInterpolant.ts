@@ -1,5 +1,5 @@
 import { Interpolant } from "three";
-import { NaturalCubicSpline } from "./NaturalCubicSpline";
+import { NaturalCubicSpline } from "./NaturalCubicSpline.js";
 
 export class NaturalCubicInterpolant extends Interpolant {
 

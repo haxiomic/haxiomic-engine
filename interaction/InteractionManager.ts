@@ -1,4 +1,4 @@
-import { EventEmitter } from "../EventEmitter"
+import { EventEmitter } from "../EventEmitter.js"
 
 /**
  * InteractionManager implements handles common edge cases when using pointer events for realtime content

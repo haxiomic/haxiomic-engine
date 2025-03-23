@@ -14,7 +14,7 @@ import {
     WebGLRenderTarget,
     WebGLRenderer
 } from 'three';
-import { Layer as RenderLayer } from '../Layer';
+import { Layer as RenderLayer } from '../Layer.js';
 
 /**
     **Uses the `WorldPosition` layer**

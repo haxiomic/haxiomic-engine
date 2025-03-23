@@ -1,6 +1,6 @@
 import { ClampToEdgeWrapping, HalfFloatType, LinearFilter, LinearMipMapLinearFilter, NearestFilter, NoColorSpace, RawShaderMaterial, RenderTargetOptions, RepeatWrapping, RGBAFormat, Texture, Uniform, Vector3, WebGLRenderer, WebGLRenderTarget } from "three";
-import { Rendering } from "../rendering/Rendering";
-import { DualRenderTarget } from "../rendering/DualRenderTarget";
+import { Rendering } from "../rendering/Rendering.js";
+import { DualRenderTarget } from "../rendering/DualRenderTarget.js";
 
 type Int = number;
 

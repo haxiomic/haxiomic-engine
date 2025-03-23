@@ -1,5 +1,5 @@
-import { EventEmitter } from "../EventEmitter";
-import { Spring } from "./Spring";
+import { EventEmitter } from "../EventEmitter.js";
+import { Spring } from "./Spring.js";
 
 enum AnimationType {
 	Spring = 0,

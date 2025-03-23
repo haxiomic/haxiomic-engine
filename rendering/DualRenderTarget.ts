@@ -1,5 +1,5 @@
 import { RenderTargetOptions, Texture, Uniform, WebGLRenderer, WebGLRenderTarget } from "three";
-import { Rendering } from "./Rendering";
+import { Rendering } from "./Rendering.js";
 
 export class DualRenderTarget {
 

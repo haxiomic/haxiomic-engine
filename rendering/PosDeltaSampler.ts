@@ -1,7 +1,7 @@
 import { NearestFilter, NoColorSpace, RawShaderMaterial, Texture, Uniform, Vector2, WebGLRenderer } from "three";
-import { DualRenderTarget } from "./DualRenderTarget";
-import { Switch } from "../Functional";
-import { Rendering } from "./Rendering";
+import { DualRenderTarget } from "./DualRenderTarget.js";
+import { Switch } from "../Functional.js";
+import { Rendering } from "./Rendering.js";
 
 export enum PosDeltaSamplerDataFormat {
     /**

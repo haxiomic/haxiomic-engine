@@ -15,7 +15,7 @@ export class CustomPhysicalMaterial<UserUniforms extends { [uniform: string]: IU
 
 	public flatShading: boolean;
 
-	public uniforms: UserUniforms;
+	declare public uniforms: UserUniforms;
 
 	public color: Color;
 	public roughness: number;

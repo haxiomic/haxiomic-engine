@@ -1,6 +1,6 @@
 import { Interpolant, LinearInterpolant, Matrix4, Quaternion, Vector3 } from "three";
-import { CubicHermiteInterpolant } from "./CubicHermiteInterpolant";
-import { NaturalCubicInterpolant } from "./NaturalCubicInterpolant";
+import { CubicHermiteInterpolant } from "./CubicHermiteInterpolant.js";
+import { NaturalCubicInterpolant } from "./NaturalCubicInterpolant.js";
 
 export class QuaternionRollInterpolant extends Interpolant {
 

@@ -1,4 +1,4 @@
-import { nearestPowerOfTwo } from '../math/Math';
+import { nearestPowerOfTwo } from "../math/Math.js";
 import { AnyPixelFormat, ClampToEdgeWrapping, DepthTexture, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderTarget, Wrapping } from 'three';
 
 export enum PowerOfTwoMode {

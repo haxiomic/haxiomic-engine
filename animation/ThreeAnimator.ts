@@ -1,6 +1,6 @@
 import { Euler, Matrix4, Quaternion, Vector2, Vector3, Vector4 } from "three";
-import { Animator, Tween, TweenStepFn } from "./Animator";
-import { Spring } from "./Spring";
+import { Animator, Tween, TweenStepFn } from "./Animator.js";
+import { Spring } from "./Spring.js";
 
 export enum QuaternionSpringMode {
 	DirectionRollCartesian,

@@ -1,6 +1,6 @@
 import { Express, NextFunction, Request, Response } from 'express';
 import { ZodError, ZodSchema } from 'zod';
-import { NamedConsole } from '../NamedConsole';
+import { NamedConsole } from '../NamedConsole.js';
 
 /**
  * **Explicitly typed routes**

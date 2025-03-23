@@ -1,5 +1,5 @@
 import { Camera, Matrix4, Quaternion, Vector2, Vector3 } from "three";
-import InteractionManager from "../interaction/InteractionManager";
+import InteractionManager from "../interaction/InteractionManager.js";
 
 export class FlyControls {
 

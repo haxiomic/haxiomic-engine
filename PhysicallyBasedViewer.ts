@@ -5,20 +5,20 @@ import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { Console } from "./Console";
-import { DevUI as Dev } from "./dev/DevUI";
-import { EnvironmentProbes } from "./dev/EnvironmentProbes";
-import { TextureVisualizer } from "./dev/TextureVisualizer";
-import { EventEmitter } from "./EventEmitter";
-import InteractionManager from "./interaction/InteractionManager";
-import ThreeInteraction from "./interaction/ThreeInteraction";
-import { Layer } from "./Layer";
-import { ObjectUtils } from "./ObjectUtils";
-import { Rendering } from "./rendering/Rendering";
-import RenderTargetStore from "./rendering/RenderTargetStore";
+import { Console } from "./Console.js";
+import { DevUI as Dev } from "./dev/DevUI.js";
+import { EnvironmentProbes } from "./dev/EnvironmentProbes.js";
+import { TextureVisualizer } from "./dev/TextureVisualizer.js";
+import { EventEmitter } from "./EventEmitter.js";
+import InteractionManager from "./interaction/InteractionManager.js";
+import ThreeInteraction from "./interaction/ThreeInteraction.js";
+import { Layer } from "./Layer.js";
+import { ObjectUtils } from "./ObjectUtils.js";
+import { Rendering } from "./rendering/Rendering.js";
+import RenderTargetStore from "./rendering/RenderTargetStore.js";
 // three js stats
 import Stats from 'three/examples/jsm/libs/stats.module.js';
-import { TransformGizmo } from "./dev/TransformGizmo";
+import { TransformGizmo } from "./dev/TransformGizmo.js";
 
 export type PhysicallyBasedViewerOptions<Controls extends {
 	enabled?: boolean,

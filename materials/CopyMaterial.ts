@@ -1,6 +1,6 @@
 import { DoubleSide, Texture, Uniform } from "three";
-import { RawShaderMaterial } from "./RawShaderMaterial";
-import { ShaderMaterial } from "./ShaderMaterial";
+import { RawShaderMaterial } from "./RawShaderMaterial.js";
+import { ShaderMaterial } from "./ShaderMaterial.js";
 
 type C = 'r' | 'g' | 'b' | 'a';
 export type RGBASwizzle = `.${C}${C}${C}${C}` | '';
