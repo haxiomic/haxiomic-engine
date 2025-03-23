@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/node": "^22.10.2",
     "@types/express": "^5.0.0",
     "@types/react": "^19.0.12",
     "@types/three": "^0.173.0",
