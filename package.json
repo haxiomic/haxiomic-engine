@@ -4,6 +4,7 @@
   "main": "",
   "author": "haxiomic (George Corney)",
   "license": "ISC",
+  "type": "module",
   "description": "",
   "dependencies": {
     "zod": "^3.24.2",
