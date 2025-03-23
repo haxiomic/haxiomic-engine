@@ -46,7 +46,7 @@ export class CopyMaterial extends ShaderMaterial<
 					gl_FragColor = textureLod(source, vUv, sourceMipmapLevel)SWIZZLE;
 
 					#include <tonemapping_fragment>
-                    #include <colorspace_fragment>
+					#include <colorspace_fragment>
 				}
 			`,
 			side: DoubleSide,
