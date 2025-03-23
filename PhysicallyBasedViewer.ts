@@ -458,19 +458,18 @@ export class PhysicallyBasedViewer<
 			// canvas.width = targetWidth;
 			// canvas.height = targetHeight;
 			renderer.setSize(targetWidth, targetHeight, false);
-
 		}
-			let aspect = targetWidth / targetHeight;
-			if (camera instanceof PerspectiveCamera && camera.aspect != aspect) {
-				camera.aspect = aspect;
-				camera.updateProjectionMatrix();
-			} else if (camera instanceof ArrayCamera) {
-				for (let cam of camera.cameras) {
-					cam.aspect = aspect;
-					cam.updateProjectionMatrix();
-				}
-			}
 
+		let aspect = targetWidth / targetHeight;
+		if (isPerspectiveCamera(camera) && camera.aspect != aspect) {
+			camera.aspect = aspect;
+			camera.updateProjectionMatrix();
+		} else if (isArrayCamera(camera)) {
+			for (let cam of camera.cameras) {
+				cam.aspect = aspect;
+				cam.updateProjectionMatrix();
+			}
+		}
 
 		this.events.beforeUpdate.dispatch({
 			t_s: renderTime_ms / 1000,
@@ -637,4 +636,12 @@ function createDomEventProxy(interactionManager: InteractionManager, priority?: 
 		},
 	}
 
+}
+
+function isPerspectiveCamera(camera: Camera): camera is PerspectiveCamera {
+	return camera.type === 'PerspectiveCamera';
+}
+
+function isArrayCamera(camera: Camera): camera is ArrayCamera {
+	return camera.type === 'ArrayCamera';
 }
