@@ -27,3 +27,5 @@ await build({
     outfile: 'dist/main.js'
 });
 ```
+
+Add `/// <reference types="haxiomic-engine" />` to your project so that .glsl and inline-worker! imports will pass type-check
