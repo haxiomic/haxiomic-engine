@@ -1,7 +1,7 @@
 import { Blending, ColorRepresentation, DoubleSide, IUniform, LinearFilter, LinearMipMapLinearFilter, MathUtils, Mesh, MeshBasicMaterial, Object3D, PlaneGeometry, RepeatWrapping, ShaderMaterialParameters, Texture, Uniform, Vector2 } from "three";
 import { Layer } from "../Layer";
-import { ShaderMaterial } from "@haxiomic-engine/materials/ShaderMaterial";
-import { RGBASwizzle } from "@haxiomic-engine/materials/CopyMaterial";
+import { RGBASwizzle } from "../materials/CopyMaterial";
+import { ShaderMaterial } from "../materials/ShaderMaterial";
 
 export class TextureVisualizer {
 

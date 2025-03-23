@@ -1,7 +1,7 @@
-import Blur1D from "@haxiomic-engine/materials/Blur1D";
-import { mipmapCount } from "@haxiomic-engine/math/Math";
-import { Rendering } from "@haxiomic-engine/rendering/Rendering";
-import RenderTargetStore from "@haxiomic-engine/rendering/RenderTargetStore";
+import Blur1D from "../materials/Blur1D";
+import { mipmapCount } from "../math/Math";
+import { Rendering } from "./Rendering";
+import RenderTargetStore from "./RenderTargetStore";
 import { LinearFilter, LinearMipmapNearestFilter, WebGLRenderer, WebGLRenderTarget } from "three";
 
 export function generateBlurredMipmaps(

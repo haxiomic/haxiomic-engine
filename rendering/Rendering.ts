@@ -1,8 +1,8 @@
-import { Camera, Color, ColorRepresentation, DoubleSide, FrontSide, IUniform, Layers, Material, MeshBasicMaterial, NoToneMapping, OrthographicCamera, Scene, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
+import { Camera, Color, ColorRepresentation, IUniform, Layers, Material, NoToneMapping, OrthographicCamera, Scene, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
 import { CopyMaterial, RawCopyMaterial, RGBASwizzle } from "../materials/CopyMaterial";
+import { RawShaderMaterial } from "../materials/RawShaderMaterial";
+import { ShaderMaterial } from "../materials/ShaderMaterial";
 import ClipSpaceTriangle from "../objects/ClipSpaceTriangle";
-import { ShaderMaterial } from "@haxiomic-engine/materials/ShaderMaterial";
-import { RawShaderMaterial } from "@haxiomic-engine/materials/RawShaderMaterial";
 
 export namespace Rendering {
 

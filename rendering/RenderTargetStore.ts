@@ -1,4 +1,4 @@
-import { nearestPowerOfTwo } from '@haxiomic-engine/math/Math';
+import { nearestPowerOfTwo } from '../math/Math';
 import { AnyPixelFormat, ClampToEdgeWrapping, DepthTexture, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderTarget, Wrapping } from 'three';
 
 export enum PowerOfTwoMode {

@@ -1,5 +1,5 @@
-import { ShaderMaterial } from "@haxiomic-engine/materials/ShaderMaterial";
 import { Texture, Uniform } from "three";
+import { ShaderMaterial } from "./ShaderMaterial";
 
 /**
  * Blends mipmaps over level 0
