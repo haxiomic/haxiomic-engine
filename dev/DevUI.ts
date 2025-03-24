@@ -81,7 +81,7 @@ let GUIAddFolder = GUI.prototype.addFolder;
 GUI.prototype.addFolder = function(name: string) {
 	// use stack trace to get the name of the calling function
 	let stack = new Error().stack;
-	let caller = stack?.split('\n')[2].trim();
+	let caller = stack?.split('\n')[2]?.trim();
 	let hash = `${caller} | ${name ?? ''}`;
 
 	if (this.hashedFolders == null) {
