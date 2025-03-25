@@ -11,16 +11,6 @@ const compileTimePlugin = (esbuildConfig = {}) => ({
   name: 'compile-time',
   setup(build) {
 
-    // we also support worker-loader! prefix for compatibility with webpack
-    build.onResolve({filter: /\.(compiletime|compile-time)\.(js|mjs|ts)$/}, args => {
-        // remove loader prefix and mark the namespace so we can handle it in onLoad
-        let resolveDir = args.resolveDir ?? path.dirname(args.importer);
-        return {
-            path: path.isAbsolute(args.path) ? args.path : path.join(resolveDir, args.path),
-            namespace: 'compile-time',
-        }
-    });
-
     build.onLoad({ filter: /\.(compiletime|compile-time)\.(js|mjs|ts)$/ }, async (args) => {
         let importPath = args.path;
         if (args.path.endsWith('.ts')) {
