@@ -3,8 +3,9 @@
 import fs from 'fs';
 import path from 'path';
 import { GlslMinify } from 'webpack-glsl-minify/build/minify.js';
+import esbuild from 'esbuild';
 
-/** @type {(options: { minify: boolean }) => any} */
+/** @type {(options: { minify: boolean }) => esbuild.Plugin} */
 const glslMinifyPlugin = (options) => ({
   name: 'glsl-minify',
   setup(build) {

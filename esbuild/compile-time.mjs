@@ -5,7 +5,8 @@ import findCacheDir from 'find-cache-dir';
 import path from 'path';
 
 /**
- * @param {*} esbuildConfig esbuild config for compiling .ts to .js
+ * @param {esbuild.BuildOptions} esbuildConfig esbuild config for compiling .ts to .js
+ * @returns {esbuild.Plugin}
  */
 const compileTimePlugin = (esbuildConfig = {}) => ({
   name: 'compile-time',
