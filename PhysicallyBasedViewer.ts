@@ -29,6 +29,7 @@ export type PhysicallyBasedViewerOptions<Controls extends {
 	camera?: PerspectiveCamera,
 	devMode?: boolean,
 	controls?: Controls | ((camera: Camera, interactionManager: InteractionManager) => Controls),
+	interactionManager?: InteractionManager,
 	defaultEnvironment?: boolean,
 	defaultLights?: boolean,
 	postProcessing?: {
@@ -182,7 +183,7 @@ export class PhysicallyBasedViewer<
 		renderer.toneMappingExposure = this.toneMappingExposure;
 		renderer.toneMapping = this.toneMapping;
 
-		const interactionManager = this.interactionManager = new InteractionManager(canvas, {
+		const interactionManager = this.interactionManager = options.interactionManager ?? new InteractionManager(canvas, {
 			autoCapturePointer: true,
 			disableDefaultBehavior: true,
 		});
