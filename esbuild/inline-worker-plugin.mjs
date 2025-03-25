@@ -9,24 +9,29 @@ import path from 'path';
 export {inlineWorkerPlugin as default};
 
 /**
- * @param {*} extraConfig esbuild config for compiling the worker .ts to .js
- * @returns 
+ * @param {esbuild.BuildOptions} extraConfig esbuild config for compiling the worker .ts to .js
+ * @returns {esbuild.Plugin}
  */
 function inlineWorkerPlugin(extraConfig) {
 	return {
 		name: 'esbuild-plugin-inline-worker',
+		/** @param {esbuild.PluginBuild} build */
 		setup(build) {
-
 			// handle resolving import 'inline-worker!*' and import '*.worker.js'
 			// we also support worker-loader! prefix for compatibility with webpack
-			build.onResolve({filter: /^worker-loader!|^inline-worker!|\.worker\.(js|jsx|ts|tsx)$/}, args => {
+			build.onResolve({filter: /^worker-loader!|^inline-worker!|\.worker\.(js|jsx|ts|tsx)$/}, async args => {
 				// remove loader prefix and mark the namespace so we can handle it in onLoad
 				let filePath = args.path.replace(/^worker-loader!|^inline-worker!/, '');
-				let resolveDir = args.resolveDir ?? path.dirname(args.importer);
-				return {
-					path: path.isAbsolute(filePath) ? filePath : path.join(resolveDir, filePath),
-					namespace: 'inline-loader',
-				}
+				let resolved = await build.resolve(filePath, {
+					importer: args.importer,
+					kind: args.kind,
+					namespace: args.namespace,
+					resolveDir: args.resolveDir,
+					with: args.with,
+					pluginData: args.pluginData,
+				});
+				resolved.namespace = 'inline-loader';
+				return resolved;
 			});
 			
 			build.onLoad({
