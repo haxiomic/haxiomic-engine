@@ -147,17 +147,7 @@ export namespace Console {
 	export function examine(...args: any[]){
 		// use node's util.inspect to print objects
 		for (let arg of args) {
-			if (typeof arg === 'object') {
-				// check if we have require
-				let global = globalThis as any;
-				if ('require' in global) {
-					printlnArgsFormatted([logPrefix, global.require('util').inspect(arg, { depth: null, colors: true })], OutputStream.Log);
-				} else {
-					printlnArgsFormatted([logPrefix, arg], OutputStream.Log);
-				}
-			} else {
-				printlnArgsFormatted([logPrefix, arg], OutputStream.Log);
-			}
+			printlnArgsFormatted([logPrefix, arg], OutputStream.Log);
 		}
 	}
 
