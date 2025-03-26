@@ -65,7 +65,7 @@ export namespace Console {
 			let callerPrefix = callerInfoPrefix(callerInfo);
 			// print debug message
 			printlnArgsFormatted([
-					errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>:` : ''),
 					...args
 				],
 				OutputStream.Error
@@ -96,7 +96,7 @@ export namespace Console {
 			let callerPrefix = callerInfoPrefix(callerInfo);
 			// print debug message
 			printlnArgsFormatted([
-					debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>:` : ''),
 					...args
 				],
 				OutputStream.Debug
