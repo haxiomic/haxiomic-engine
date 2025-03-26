@@ -40,21 +40,21 @@ export namespace Console {
 
 	export let formatMode = determineFormatMode();
 
-	export let logPrefix = '<b,gray>><//> ';
-	export let warnPrefix = '<b,yellow>><//> ';
-	export let errorPrefix = '<b,red>></b> ';
-	export let successPrefix = '<b,light_green>><//> ';
-	export let debugPrefix = '<b,magenta>><//> ';
+	export let logPrefix = '<b,gray>><//>';
+	export let warnPrefix = '<b,yellow>><//>';
+	export let errorPrefix = '<b,red>></b>';
+	export let successPrefix = '<b,light_green>><//>';
+	export let debugPrefix = '<b,magenta>><//>';
 	export let argSeparator = ' ';
 
 	export function log(...args: any[]){
 		if (emitLog) {
-			printlnFormatted(logPrefix + args.join(argSeparator), OutputStream.Log);
+			printlnArgsFormatted([logPrefix, ...args], OutputStream.Log);
 		}
 	}
 
 	export function warn(...args: any[]){
-		printlnFormatted(warnPrefix + args.join(argSeparator), OutputStream.Warn);
+		printlnArgsFormatted([warnPrefix, ...args], OutputStream.Warn);
 	}
 
 	export function error(...args: any[]){
@@ -64,19 +64,24 @@ export namespace Console {
 		if (callerInfo != null) {
 			let callerPrefix = callerInfoPrefix(callerInfo);
 			// print debug message
-			printlnFormatted(errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : '') + args.join(argSeparator), OutputStream.Error);
+			printlnArgsFormatted([
+					errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					...args
+				],
+				OutputStream.Error
+			);
 		} else {
-			printlnFormatted(errorPrefix + args.join(argSeparator), OutputStream.Error);
+			printlnArgsFormatted([errorPrefix, ...args], OutputStream.Error);
 		}
 	}
 
 	export function success(...args: any[]){
-		printlnFormatted(successPrefix + args.join(argSeparator), OutputStream.Log);
+		printlnArgsFormatted([successPrefix, ...args], OutputStream.Log);
 	}
 
 	export function verbose(...args: any[]){
 		if (emitVerbose) {
-			printlnFormatted(args.join(argSeparator), OutputStream.Log);
+			printlnArgsFormatted(args, OutputStream.Log);
 		}
 	}
 
@@ -90,9 +95,14 @@ export namespace Console {
 		if (callerInfo != null) {
 			let callerPrefix = callerInfoPrefix(callerInfo);
 			// print debug message
-			printlnFormatted(debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : '') + args.join(argSeparator), OutputStream.Debug);
+			printlnArgsFormatted([
+					debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					...args
+				],
+				OutputStream.Debug
+			);
 		} else {
-			printlnFormatted(debugPrefix + args.join(argSeparator), OutputStream.Debug);
+			printlnArgsFormatted([debugPrefix, ...args], OutputStream.Debug);
 		}
 	}
 
@@ -141,45 +151,79 @@ export namespace Console {
 				// check if we have require
 				let global = globalThis as any;
 				if ('require' in global) {
-					printlnFormatted(logPrefix + global.require('util').inspect(arg, { depth: null, colors: true }), OutputStream.Log);
+					printlnArgsFormatted([logPrefix, global.require('util').inspect(arg, { depth: null, colors: true })], OutputStream.Log);
 				} else {
-					printlnFormatted(logPrefix + JSON.stringify(arg), OutputStream.Log);
+					printlnArgsFormatted([logPrefix, arg], OutputStream.Log);
 				}
 			} else {
-				printlnFormatted(logPrefix + arg, OutputStream.Log);
+				printlnArgsFormatted([logPrefix, arg], OutputStream.Log);
+			}
+		}
+	}
+
+	export function printlnArgsFormatted(args: any[], outputStream?: OutputStream){
+		if (formatMode === FormatMode.AsciiTerminal) {
+			let formatted = args.map(arg => {
+				switch (typeof arg) {
+					case 'string': return format(arg, formatMode).formatted;
+					default: return global.require('util').inspect(arg, { depth: null, colors: true });
+				}
+			}).join(argSeparator);
+			return println(formatted, outputStream);
+		}  else if (formatMode === FormatMode.BrowserConsole) {
+			// here we map args by type, if string we pass through formatter, everything else we log as-is
+			let formatString = '';
+			let browserFormatArguments = new Array<string>();
+			for (let i = 0; i < args.length; i++) {
+				let arg = args[i];
+				if (i > 0) {
+					formatString += argSeparator;
+				}
+				switch (typeof arg) {
+					case 'string': {
+						let formatted = format(arg, formatMode);
+						formatString += formatted.formatted;
+						browserFormatArguments.push(...formatted.browserFormatArguments);
+					} break;
+					// see format specifiers
+					// https://console.spec.whatwg.org/#formatting-specifiers
+					// Specifier   | Purpose
+					// %s          | Element which substitutes is converted to a string
+					// %d or %i    | Element which substitutes is converted to an integer
+					// %f          | Element which substitutes is converted to a float
+					// %o          | Element is displayed with optimally useful formatting
+					// %O          | Element is displayed with generic JavaScript object formatting
+					// %c          | Applies provided CSS
+					default: {
+						formatString += '%o';
+						browserFormatArguments.push(arg);
+					} break;
+				}
+			}
+
+			switch (outputStream) {
+				case OutputStream.Log:
+					console.log(formatString, ...browserFormatArguments);
+					break;
+				case OutputStream.Warn:
+					console.warn(formatString, ...browserFormatArguments);
+					break;
+				case OutputStream.Error:
+					console.error(formatString, ...browserFormatArguments);
+					break;
+				case OutputStream.Debug:
+					console.debug(formatString, ...browserFormatArguments);
+					break;
 			}
 		}
 	}
 
 	export function printlnFormatted(s = '', outputStream?: OutputStream){
-		return printFormatted(s + '\n', outputStream);
+		return printlnArgsFormatted([s + '\n'], outputStream);
 	}
 
 	export function println(s = '', outputStream?: OutputStream){
 		return print(s + '\n', outputStream);
-	}
-
-	export function printFormatted(s: string, outputStream: OutputStream = OutputStream.Log) {
-		let result = format(s, formatMode);
-
-		if (formatMode === FormatMode.AsciiTerminal) {
-			print(result.formatted, outputStream);
-		} else if (formatMode === FormatMode.BrowserConsole) {
-			switch (outputStream) {
-				case OutputStream.Log:
-					console.log(result.formatted, ...result.browserFormatArguments);
-					break;
-				case OutputStream.Warn:
-					console.warn(result.formatted, ...result.browserFormatArguments);
-					break;
-				case OutputStream.Error:
-					console.error(result.formatted, ...result.browserFormatArguments);
-					break;
-				case OutputStream.Debug:
-					console.debug(result.formatted, ...result.browserFormatArguments);
-					break;
-			}
-		}
 	}
 
 	export function print(s: string = '', outputStream: OutputStream = OutputStream.Log) {

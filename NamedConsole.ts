@@ -8,10 +8,6 @@ export enum LogLevel {
 	Debug = 4,
 }
 
-const isNode = typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
-const util = 'util';
-const inspect = isNode ? require(util).inspect : (obj: any) => JSON.stringify(obj);
-
 /**
  * Override console to support formatting and prefixes
  * 
@@ -42,26 +38,13 @@ export class NamedConsole {
 		if (logLevel != null) this.logLevel = logLevel;
 	}
 
-	formatArgs = (args: any[]) => {
-		return args.map(arg => {
-			const type = typeof arg;
-			if (type === 'object') {
-				arg = inspect(arg, { colors: true, depth: 5 });
-			}
-			const format = this.typeFormattingMap[type] ?? 'white';
-			return `<${format}>${arg}</>`;
-		});
-	}
-
 	log = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Log) return;
-		args = this.formatArgs(args);
 		Console.log(`[${this.prefix}]`, ...args);
 	}
 
 	error = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Error) return;
-		args = this.formatArgs(args);
 
 		const errorPrefix = Console.errorPrefix;
 		const argSeparator = Console.argSeparator;
@@ -72,33 +55,39 @@ export class NamedConsole {
 		if (callerInfo != null) {
 			let callerPrefix = Console.callerInfoPrefix(callerInfo);
 			// print debug message
-			Console.printlnFormatted(errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : '') + args.join(argSeparator), Console.OutputStream.Error);
+			Console.printlnArgsFormatted([
+					errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					...args
+				],
+				Console.OutputStream.Error
+			);
 		} else {
-			Console.printlnFormatted(errorPrefix + args.join(argSeparator), Console.OutputStream.Error);
+			Console.printlnArgsFormatted([
+					errorPrefix,
+					...args
+				],
+				Console.OutputStream.Error
+			);
 		}
 	}
 
 	warn = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Warn) return;
-		args = this.formatArgs(args);
 		Console.warn(`[${this.prefix}]`, ...args);
 	}
 
 	info = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Log) return;
-		args = this.formatArgs(args);
 		Console.log(`[${this.prefix}]`, ...args);
 	}
 
 	success = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Log) return;
-		args = this.formatArgs(args);
 		Console.success(`[${this.prefix}]`, ...args);
 	}
 
 	debug = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Debug) return;
-		args = this.formatArgs(args);
 
 		const {
 			debugPrefix,
@@ -116,9 +105,19 @@ export class NamedConsole {
 		if (callerInfo != null) {
 			let callerPrefix = Console.callerInfoPrefix(callerInfo);
 			// print debug message
-			Console.printlnFormatted(debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : '') + args.join(argSeparator), OutputStream.Debug);
+			Console.printlnArgsFormatted([
+					debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					...args
+				],
+				OutputStream.Debug
+			);
 		} else {
-			Console.printlnFormatted(debugPrefix + args.join(argSeparator), OutputStream.Debug);
+			Console.printlnArgsFormatted([
+					debugPrefix,
+					...args
+				],
+				OutputStream.Debug
+			);
 		}
 	}
 
