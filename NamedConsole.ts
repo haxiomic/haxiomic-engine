@@ -1,4 +1,3 @@
-import { inspect } from "util";
 import { Console } from "./Console.js";
 
 export enum LogLevel {
@@ -8,6 +7,10 @@ export enum LogLevel {
 	Log = 3,
 	Debug = 4,
 }
+
+const isNode = typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
+const util = 'util';
+const inspect = isNode ? require(util).inspect : (obj: any) => JSON.stringify(obj);
 
 /**
  * Override console to support formatting and prefixes
