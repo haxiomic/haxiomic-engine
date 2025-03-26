@@ -169,7 +169,7 @@ export class PhysicallyBasedViewer<
 
 		if (this.devMode) {
 			Console.log(`${this.logTag}: <b>three v${REVISION}</>, <cyan>dev mode active<//>`);
-			console.log(`Capabilities`, renderer.capabilities);
+			Console.log(`Capabilities`, renderer.capabilities);
 			this.renderLayers.enable(Layer.Developer);
 		}
 
@@ -576,7 +576,7 @@ export class PhysicallyBasedViewer<
 					i++;
 				}
 
-				console.error(prefix + "\n" + linedCode);
+				Console.error(prefix + "\n" + linedCode);
 			}
 		}
 
@@ -608,7 +608,7 @@ function createDomEventProxy(interactionManager: InteractionManager, priority?: 
 			if (eventEmitter != null) {
 				eventEmitter.addListener(listener, priority);
 			} else {
-				console.warn(`DomEventProxy: unknown event type "${type}"`);
+				Console.warn(`DomEventProxy: unknown event type "${type}"`);
 			}
 		},
 		removeEventListener: (type: string, listener: (event: Event) => void, options: {}) => {
@@ -616,7 +616,7 @@ function createDomEventProxy(interactionManager: InteractionManager, priority?: 
 			if (eventEmitter != null) {
 				eventEmitter.removeListener(listener);
 			} else {
-				console.warn(`DomEventProxy: unknown event type "${type}"`);
+				Console.warn(`DomEventProxy: unknown event type "${type}"`);
 			}
 		},
 		style: {},
