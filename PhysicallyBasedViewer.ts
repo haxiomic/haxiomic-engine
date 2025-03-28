@@ -518,6 +518,7 @@ export class PhysicallyBasedViewer<
 				clearStencil: true,
 				toneMapping: this.toneMapping,
 				toneMappingExposure: this.toneMappingExposure,
+				restoreGlobalState: true,
 			});
 		}
 	}
