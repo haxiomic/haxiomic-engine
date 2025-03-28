@@ -84,7 +84,7 @@ export namespace Rendering {
 		 * If provided the target will be cleared with this stencil before rendering
 		 * Otherwise the target will not be cleared
 		 */
-		clearStencil: boolean,
+		clearStencil?: boolean,
 		/**
 		 * Override viewport, by default it will spans the entire target
 		 */
@@ -101,7 +101,7 @@ export namespace Rendering {
 		 * Restore global state after rendering
 		 * @default false
 		 */
-		restoreGlobalState?: boolean,
+		restoreGlobalState: boolean,
 	}
 
 	/**
@@ -186,9 +186,9 @@ export namespace Rendering {
 		camera.layers.mask = _layersMask;
 	}
 
-	const fragmentPassCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
-	const fragmentPassScene = new Scene();
-	const fragmentPassMesh = new ClipSpaceTriangle();
+	export const fragmentPassScene = new Scene();
+	export const fragmentPassCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+	export const fragmentPassMesh = new ClipSpaceTriangle();
 	const fragmentPassClearColor = {
 		rgb: new Color(1, 0, 1),
 		alpha: 1,
@@ -315,7 +315,7 @@ export namespace Rendering {
 			toneMapping: options.toneMapping,
 			toneMappingExposure: options.toneMappingExposure,
 			restoreGlobalState: options.restoreGlobalState,
-			clearColor: options.clear != null ? {rgb: 0x00000, alpha: 1} : false,
+			clearColor: options.clear != null ? {rgb: 0x00000, alpha: 0} : false,
 			clearDepth: options.clear != null ? options.clear : false,
 			clearStencil: options.clear != null ? options.clear : false,
 		});
@@ -329,6 +329,7 @@ export namespace Rendering {
 		},
 		clearDepth: boolean,
 		clearStencil: boolean,
+		restoreGlobalState?: boolean,
 	}
 
 	const emptyScene = new Scene();
@@ -341,6 +342,7 @@ export namespace Rendering {
 			clearDepth: options.clearDepth,
 			clearStencil: options.clearStencil,
 			toneMapping: NoToneMapping,
+			restoreGlobalState: options.restoreGlobalState ?? false,
 		});
 	}
 
