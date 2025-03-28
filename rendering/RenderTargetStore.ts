@@ -1,5 +1,5 @@
 import { nearestPowerOfTwo } from "../math/Math.js";
-import { AnyPixelFormat, ClampToEdgeWrapping, DepthTexture, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderTarget, Wrapping } from 'three';
+import { AnyPixelFormat, ClampToEdgeWrapping, DepthTexture, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderer, WebGLRenderTarget, Wrapping } from 'three';
 
 export enum PowerOfTwoMode {
 	None,
@@ -93,7 +93,7 @@ export default class RenderTargetStore {
 				anisotropy: options?.anisotropy ?? defaultOptions.anisotropy,
 				generateMipmaps: false,
 				stencilBuffer: false,
-				depthBuffer: options?.depthBuffer ?? defaultOptions.depthBuffer,
+				depthBuffer: options?.depthBuffer || !!options?.depthTexture,
 				depthTexture: options?.depthTexture ?? null,
 				type: options?.type ?? defaultOptions.type,
 				format: options?.format ?? defaultOptions.format,
@@ -164,6 +164,15 @@ export default class RenderTargetStore {
 			target.addEventListener('dispose', () => {
 				store.clearAndDispose();
 			});
+		}
+		return store;
+	}
+
+	static getStoreForRenderer(renderer: WebGLRenderer) {
+		let store: RenderTargetStore = (renderer as any)[storeSymbol];
+		if (store == null) {
+			store = new RenderTargetStore();
+			(renderer as any)[storeSymbol] = store;
 		}
 		return store;
 	}
