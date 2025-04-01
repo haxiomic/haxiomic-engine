@@ -5,6 +5,8 @@ import { ShaderMaterial } from "./ShaderMaterial.js";
  * Blends mipmaps over level 0
  * 
  * Use with `generateBlurredMipmaps()` to create a blurred mipmap chain
+ * 
+ * **Requires minFilter set to `LINEAR_MIPMAP_LINEAR` filtering**
  */
 export class BloomMipmapsMaterial extends ShaderMaterial<{
     source: Uniform<Texture | null>,
@@ -126,7 +128,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             if (definesNeedUpdate) {
                 if (this.bakeUniforms) {
                     this.defines.BAKE_UNIFORMS = 1;
-                    this.defines.BLOOM_ACCUMULATION = getBloomAccumulationShader({
+                    this.defines.BLOOM_ACCUMULATION = getBloomAccumulationShaderOptimized({
                         minLod,
                         maxLod,
                         bloomFalloff: this.uniforms.bloomFalloff.value,
@@ -159,6 +161,82 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 let multiplier = Math.pow(i, -bloomFalloff);
                 glsl += /*glsl*/`bloom += textureLod(source, vUv, ${i.toFixed(1)}) * ${multiplier.toFixed(3)};\n`;
             }
+            return glsl.replace(/\n/g, '\\\n');
+        }
+
+        /**
+         * Reduce textureLod calls by combining pairs of levels (trilinear filtering)
+         * Required LINEAR_MIPMAP_LINEAR filtering for this to work
+         */
+        function getBloomAccumulationShaderOptimized(
+            { minLod, maxLod, bloomFalloff }: { minLod: number, maxLod: number, bloomFalloff: number }
+        ): string {
+            let glsl = '';
+            const epsilon = 1e-6; // Small value to avoid log(0)/pow(0, negative)
+
+            // Loop over pairs of levels
+            let currentLod = minLod;
+            for (; currentLod < maxLod - 1; currentLod += 2) {
+                const lod1 = currentLod;
+                const lod2 = currentLod + 1.0;
+
+                // Calculate weights W1 and W2
+                // Handle lod = 0 carefully
+                const w1_base = Math.max(lod1, epsilon);
+                const w2_base = Math.max(lod2, epsilon); // lod2 is always >= 1 if minLod >= 0
+
+                let W1 = Math.pow(w1_base, -bloomFalloff);
+                const W2 = Math.pow(w2_base, -bloomFalloff);
+
+                // Correct W1 specifically for pow(0, 0) case if falloff is exactly 0
+                if (Math.abs(lod1) < epsilon && Math.abs(bloomFalloff) < epsilon) {
+                    W1 = 1.0;
+                }
+
+                const W_total = W1 + W2;
+
+                // Proceed only if the combined weight is significant
+                if (W_total > epsilon) {
+                    // Calculate fractional offset f = W2 / W_total
+                    const f = W2 / W_total;
+                    // Clamp f just in case of numerical instability, although unlikely here
+                    const clamped_f = Math.max(0.0, Math.min(1.0, f));
+
+                    // Calculate the LOD to sample at for trilinear blend
+                    const sampleLod = lod1 + clamped_f;
+
+                    // The correction factor K is the total weight
+                    const K = W_total;
+
+                    // Add GLSL line for this pair
+                    // Use higher precision for sampleLod and K
+                    glsl += /*glsl*/ `bloom += textureLod(source, vUv, ${sampleLod.toFixed(5)}) * ${K.toFixed(5)};\n`;
+                }
+            }
+
+            // Handle the last level if the number of levels was odd
+            // This occurs if currentLod stopped exactly at maxLod - 1
+            if (currentLod < maxLod) { // Equivalent to checking currentLod == maxLod - 1
+                const lastLod = currentLod; // which is maxLod - 1
+
+                // Calculate weight for the last level
+                const W_last_base = Math.max(lastLod, epsilon);
+                let W_last = Math.pow(W_last_base, -bloomFalloff);
+
+                // Correct W_last specifically for pow(0, 0) case
+                 if (Math.abs(lastLod) < epsilon && Math.abs(bloomFalloff) < epsilon) {
+                    W_last = 1.0;
+                }
+
+
+                // Add GLSL line only if weight is significant
+                if (W_last > epsilon) {
+                     // Use original precision spec for consistency or update as needed
+                    glsl += /*glsl*/ `bloom += textureLod(source, vUv, ${lastLod.toFixed(1)}) * ${W_last.toFixed(5)};\n`;
+                }
+            }
+
+            // Replace newlines for embedding if necessary (kept from original)
             return glsl.replace(/\n/g, '\\\n');
         }
     }
