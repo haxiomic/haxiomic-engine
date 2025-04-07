@@ -76,8 +76,6 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                     // mix in lods
                     vec4 lod0 = texture2D(source, vUv);
 
-                    gl_FragColor = lod0;
-
                     vec4 bloom = vec4(0.0);
                     
                     {
