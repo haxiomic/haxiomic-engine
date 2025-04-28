@@ -1,5 +1,5 @@
 export function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
+    return a + (b - a) * t;
 }
 
 export function mix(a: number, b: number, t: number) {
@@ -18,11 +18,11 @@ export function smoothstep(edge0: number, edge1: number, x: number): number {
 }
 
 export function clamp(v: number, min: number, max: number) {
-	return v < min ? min : (v > max ? max : v);
+    return v < min ? min : (v > max ? max : v);
 }
 
-export function fract(x: number) { 
-	return x - Math.floor(x);
+export function fract(x: number) {
+    return x - Math.floor(x);
 }
 
 export function mod(a: number, b: number) {
@@ -38,7 +38,7 @@ export function mipmapDimension(widthOrHeight: number, level: number) {
 }
 
 export function nearestPowerOfTwo(value: number) {
-	const exponent = Math.round(Math.log2(value));
-	const powerOfTwo = Math.pow(2, exponent);
-	return powerOfTwo;
+    const exponent = Math.round(Math.log2(value));
+    const powerOfTwo = Math.pow(2, exponent);
+    return powerOfTwo;
 }
