@@ -6,7 +6,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { Console } from "./Console.js";
-import { DevUI as Dev } from "./dev/DevUI.js";
+import { DevUI } from "./dev/DevUI.js";
 import { EnvironmentProbes } from "./dev/EnvironmentProbes.js";
 import { TextureVisualizer } from "./dev/TextureVisualizer.js";
 import { EventEmitter } from "./EventEmitter.js";
@@ -316,7 +316,7 @@ export class PhysicallyBasedViewer<
 
 		// dev mode
 		if (this.devMode) {
-			let renderingFolder = Dev.addFolder('Rendering');
+			let renderingFolder = DevUI.addFolder('Rendering');
 			renderingFolder.close();
 			renderingFolder.add(this, 'pixelRatio', 0.1, 3, 0.1);
 			renderingFolder.add(this, 'toneMapping', {
@@ -371,7 +371,7 @@ export class PhysicallyBasedViewer<
 				directionalLightVisualizer.layers.set(Layer.Developer);
 				devRoot.add(directionalLightVisualizer);
 
-				let directionalLightFolder = Dev.addFolder('Directional Light');
+				let directionalLightFolder = DevUI.addFolder('Directional Light');
 				directionalLightFolder.add(directionalLight, 'intensity', 0, 10);
 				directionalLightFolder.addColor(directionalLight, 'color');
 				directionalLightFolder.close();
@@ -415,13 +415,13 @@ export class PhysicallyBasedViewer<
 				// p to toggle post processing
 				if (event.key === 'p' && event.target === document.body) {
 					this.postProcessingEnabled = !this.postProcessingEnabled;
-					Dev.ui.controllersRecursive().find(c => c.property === 'postProcessingEnabled')?.updateDisplay();
+					DevUI.ui.controllersRecursive().find(c => c.property === 'postProcessingEnabled')?.updateDisplay();
 				}
 
 				// b to toggle bloom
 				if (event.key === 'b' && event.target === document.body) {
 					this.bloomPass.enabled = !this.bloomPass.enabled;
-					Dev.ui.controllersRecursive().find(c => c.property === 'enabled' && c.object === this.bloomPass)?.updateDisplay();
+					DevUI.ui.controllersRecursive().find(c => c.property === 'enabled' && c.object === this.bloomPass)?.updateDisplay();
 				}
 
 				// d to toggle dev layer
