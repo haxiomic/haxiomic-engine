@@ -2,6 +2,10 @@ export function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
 
+export function mix(a: number, b: number, t: number) {
+    return a + (b - a) * t;
+}
+
 export function smoothstep(edge0: number, edge1: number, x: number): number {
     if (x <= edge0) {
         return 0;
