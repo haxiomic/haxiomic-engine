@@ -259,7 +259,7 @@ export class PhysicallyBasedViewer<
 
 		// Scene Render Pass
 		this.renderPass = new RenderPass(this.scene, this.camera);
-		this.effectComposer.addPass(this.renderPass);1
+		this.effectComposer.addPass(this.renderPass);
 
 		// Bloom Pass
 		this.bloomPass = new UnrealBloomPass(
