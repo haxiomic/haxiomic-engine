@@ -1,4 +1,4 @@
-import { Camera, Color, ColorRepresentation, IUniform, Layers, Material, NoToneMapping, OrthographicCamera, Scene, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
+import { Camera, Color, ColorRepresentation, IUniform, Layers, Material, Mesh, NoToneMapping, Object3D, OrthographicCamera, Scene, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
 import { CopyMaterial, RawCopyMaterial, RGBASwizzle } from "../materials/CopyMaterial.js";
 import { RawShaderMaterial } from "../materials/RawShaderMaterial.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
@@ -45,7 +45,7 @@ export namespace Rendering {
 	}
 
 	export type RenderPassOptions = {
-		scene: Scene,
+		scene: Mesh | Scene,
 		camera: Camera,
 		/**
 		 * Render to target or null to render to canvas
@@ -116,7 +116,6 @@ export namespace Rendering {
 		_renderPassSnapshot.renderTarget = renderer.getRenderTarget();
 		_renderPassSnapshot.activeMipmapLevel = renderer.getActiveMipmapLevel();
 		_renderPassSnapshot.activeCubeFace = renderer.getActiveCubeFace();
-		let _overrideMaterial = scene.overrideMaterial;
 		let _autoClear = renderer.autoClear;
 		renderer.getViewport(_renderPassSnapshot.viewport);
 		let _toneMapping = renderer.toneMapping;
@@ -144,9 +143,17 @@ export namespace Rendering {
 			let gl = renderer.getContext();
 			renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
 		}
-
+		
+		// set override material (storing the previous one)
+		let _overrideMaterial: unknown; // this is let unset if the overrideMaterial is not used
 		if (overrideMaterial != null) {
-			scene.overrideMaterial = overrideMaterial;
+			if (isScene(scene)) {
+				_overrideMaterial = scene.overrideMaterial;
+				scene.overrideMaterial = overrideMaterial;
+			} else {
+				_overrideMaterial = scene.material;
+				scene.material = overrideMaterial;
+			}
 		}
 
 		if (layers != null) {
@@ -179,22 +186,27 @@ export namespace Rendering {
 			}
 		}
 
-		scene.overrideMaterial = _overrideMaterial;
+		// restore override material (only if changed)
+		if (overrideMaterial != null) {
+			if (isScene(scene)) {
+				scene.overrideMaterial = _overrideMaterial as Scene['overrideMaterial'];
+			} else {
+				scene.material = _overrideMaterial as Mesh['material'];
+			}
+		}
+
 		renderer.autoClear = _autoClear;
 		renderer.toneMapping = _toneMapping;
 		renderer.toneMappingExposure = _toneMappingExposure;
 		camera.layers.mask = _layersMask;
 	}
 
-	export const fragmentPassScene = new Scene();
 	export const fragmentPassCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
 	export const fragmentPassMesh = new ClipSpaceTriangle();
 	const fragmentPassClearColor = {
 		rgb: new Color(1, 0, 1),
 		alpha: 1,
 	};
-	fragmentPassScene.add(fragmentPassMesh);
-
 
 	type Uniforms = Record<string, IUniform>;
 
@@ -238,12 +250,13 @@ export namespace Rendering {
 				(options.shader as any).uniforms[key].value = options.uniforms[key];
 			}
 		}
+
 		renderPass(renderer, {
 			target: options.target,
 			targetMipmapLevel: options.targetMipmapLevel,
 			targetCubeFace: options.targetCubeFace,
 			camera: fragmentPassCamera,
-			scene: fragmentPassScene,
+			scene: fragmentPassMesh,
 			clearColor: options.clearColor ?? fragmentPassClearColor,
 			clearDepth: options.clearDepth ?? true,
 			clearStencil: options.clearStencil ?? false,
@@ -353,4 +366,8 @@ export namespace Rendering {
 		gl.generateMipmap(gl.TEXTURE_2D);
 	}
 
+}
+
+function isScene(object: Object3D): object is Scene {
+	return (object as Scene).isScene;
 }
