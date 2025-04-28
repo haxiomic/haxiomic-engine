@@ -201,8 +201,8 @@ export namespace Rendering {
 		camera.layers.mask = _layersMask;
 	}
 
-	export const fragmentPassCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
-	export const fragmentPassMesh = new ClipSpaceTriangle();
+	const fragmentPassCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+	const fragmentPassMesh = new ClipSpaceTriangle();
 	const fragmentPassClearColor = {
 		rgb: new Color(1, 0, 1),
 		alpha: 1,
