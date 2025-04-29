@@ -431,6 +431,13 @@ export class PhysicallyBasedViewer<
 						this.dev.root.visible = this.renderLayers.isEnabled(Layer.Developer);
 					}
 				}
+
+				// s to toggle stats
+				if (event.key === 's' && event.target === document.body) {
+					if (this.dev?.stats) {
+						this.dev.stats.dom.style.display = this.dev.stats.dom.style.display === 'none' ? 'block' : 'none';
+					}
+				}
 			});
 		}
 
