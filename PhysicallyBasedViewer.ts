@@ -327,7 +327,7 @@ export class PhysicallyBasedViewer<
 				AgXToneMapping,
 			});
 			renderingFolder.add(this, 'postProcessingEnabled');
-			renderingFolder.add(this, 'toneMappingExposure', 0, 10);
+			renderingFolder.add(this, 'toneMappingExposure', 0, 2);
 			renderingFolder.add(this, 'postProcessMsaaSamples', 0, renderer.capabilities.maxSamples, 1).name('MSAA');
 
 			// bloom

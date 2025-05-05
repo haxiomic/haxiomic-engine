@@ -168,6 +168,7 @@ export class DevUI {
 		}
 		if ('premultipliedAlpha' in material) materialFolder.add(material, 'premultipliedAlpha');
 		if ('opacity' in material) materialFolder.add(material, 'opacity', 0, 1);
+		if ('alphaHash' in material) materialFolder.add(material, 'alphaHash', 0, 1);
 		if ('metalness' in material) materialFolder.add(material, 'metalness', 0, 1);
 		if ('roughness' in material) materialFolder.add(material, 'roughness', 0, 1);
 		if ('emissiveIntensity' in material) materialFolder.add(material, 'emissiveIntensity', 0, 4);
