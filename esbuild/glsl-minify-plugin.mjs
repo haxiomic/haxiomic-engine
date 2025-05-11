@@ -10,7 +10,7 @@ const glslMinifyPlugin = (options) => ({
   name: 'glsl-minify',
   setup(build) {
 	// catch paths with the namespace 'glsl-minify'
-	build.onLoad({ filter: /\.glsl|.vs|.fs|.vert|.fragment$/ }, async (args) => {
+	build.onLoad({ filter: /\.glsl|.vs|.fs|.vert|.fragment$/i }, async (args) => {
 		let fileContents = fs.readFileSync(args.path, 'utf8');
 
 		if (options.minify) {

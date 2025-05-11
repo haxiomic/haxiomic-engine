@@ -12,7 +12,7 @@ const compileTimePlugin = (esbuildConfig = {}) => ({
   name: 'compile-time',
   setup(build) {
 
-    build.onLoad({ filter: /\.(compiletime|compile-time)\.(js|mjs|ts)$/ }, async (args) => {
+    build.onLoad({ filter: /\.(compiletime|compile-time)\.(js|mjs|ts)$/i }, async (args) => {
         let importPath = args.path;
         if (args.path.endsWith('.ts')) {
             importPath = await buildScript(args.path, esbuildConfig);
