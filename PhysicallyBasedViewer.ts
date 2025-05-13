@@ -85,8 +85,13 @@ export class PhysicallyBasedViewer<
 			camera: Camera,
 			scene: Scene,
 		}>(),
+		beforeRenderPass: new EventEmitter<{
+			renderer: WebGLRenderer,
+			camera: Camera,
+			scene: Scene,
+		}>(),
 		dispose: new EventEmitter<void>(),
-		environmentChanged: new EventEmitter<{ scene: Scene, environment: Texture }>(),
+		environmentChanged: new EventEmitter<{ scene: Scene, environment: Texture | null }>(),
 	}
 
 	readonly directionalLight: DirectionalLight;
@@ -108,7 +113,7 @@ export class PhysicallyBasedViewer<
 	// post processing
 	postProcessingEnabled = true;
 	readonly effectComposer: EffectComposer;
-	readonly renderPass: RenderPass;
+	readonly effectsCompositorRenderPass: RenderPass;
 	readonly bloomPass: UnrealBloomPass;
 
 	readonly gltfLoader: GLTFLoader;
@@ -258,8 +263,8 @@ export class PhysicallyBasedViewer<
 		this.effectComposer = new EffectComposer(renderer, this.effectComposerTarget);
 
 		// Scene Render Pass
-		this.renderPass = new RenderPass(this.scene, this.camera);
-		this.effectComposer.addPass(this.renderPass);
+		this.effectsCompositorRenderPass = new RenderPass(this.scene, this.camera);
+		this.effectComposer.addPass(this.effectsCompositorRenderPass);
 
 		// Bloom Pass
 		this.bloomPass = new UnrealBloomPass(
@@ -515,10 +520,8 @@ export class PhysicallyBasedViewer<
 			this.renderer.setViewport(0, 0, targetWidth, targetHeight);
 			this.effectComposer.render(dt_s);
 		} else {
-			Rendering.renderPass(renderer, {
+			this.renderPass(camera, {
 				target: renderTarget,
-				scene: scene,
-				camera: camera,
 				layers: this.renderLayers,
 				clearColor: this.clearColor,
 				clearDepth: true,
@@ -528,6 +531,19 @@ export class PhysicallyBasedViewer<
 				restoreGlobalState: true,
 			});
 		}
+	}
+
+	renderPass(camera: Camera, renderPassOptions: Omit<Rendering.RenderPassOptions, 'scene' | 'camera'>) {
+		this.events.beforeRenderPass.dispatch({
+			renderer: this.renderer,
+			scene: this.scene,
+			camera: camera,
+		});
+		Rendering.renderPass(this.renderer, {
+			scene: this.scene,
+			camera,
+			...renderPassOptions
+		});
 	}
 
 	dispose = () => {
@@ -541,7 +557,14 @@ export class PhysicallyBasedViewer<
 	}
 
 	protected _loadEnvironmentPromise: Promise<any> = Promise.resolve(null);
-	loadEnvironment = (url: string, onProgress: (event: ProgressEvent) => void = () => { }) => {
+	loadEnvironment = (url: string | null, onProgress: (event: ProgressEvent) => void = () => { }) => {
+		if (!url) {
+			this.scene.environment = null;
+			this.scene.add(this.fallbackAmbientLight);
+			this.events.environmentChanged.dispatch({ environment: null, scene: this.scene });
+			return Promise.resolve(null);
+		}
+
 		let texturePromise = this._loadEnvironmentPromise.finally(() => new Promise<Texture>((resolve, reject) => {
 			const pmremGenerator = new PMREMGenerator(this.renderer)
 			pmremGenerator.compileEquirectangularShader()
