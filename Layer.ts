@@ -7,7 +7,7 @@ export enum Layer {
 	DepthPrepass,
 	WorldPosition,
 	UVPosition,
-	Reflector,
+	ScreenSpaceReflector,
 	
 	_LAST_,
 }
