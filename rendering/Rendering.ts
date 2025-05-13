@@ -1,8 +1,9 @@
 import { Camera, Color, ColorRepresentation, IUniform, Layers, Material, Mesh, NoToneMapping, Object3D, OrthographicCamera, Scene, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
-import { CopyMaterial, RawCopyMaterial, RGBASwizzle } from "../materials/CopyMaterial.js";
+import { CopyMaterial, RawCopyMaterial } from "../materials/CopyMaterial.js";
 import { RawShaderMaterial } from "../materials/RawShaderMaterial.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 import ClipSpaceTriangle from "../objects/ClipSpaceTriangle.js";
+import { RGBASwizzle } from "../materials/RGBASwizzle.ts";
 
 export namespace Rendering {
 

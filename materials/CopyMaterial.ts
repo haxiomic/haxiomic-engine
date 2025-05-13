@@ -1,9 +1,7 @@
 import { DoubleSide, Texture, Uniform } from "three";
 import { RawShaderMaterial } from "./RawShaderMaterial.js";
 import { ShaderMaterial } from "./ShaderMaterial.js";
-
-type C = 'r' | 'g' | 'b' | 'a';
-export type RGBASwizzle = `.${C}${C}${C}${C}` | '';
+import { RGBASwizzle } from "./RGBASwizzle.ts";
 
 /**
  * Intended to be used as a material for a fullscreen fragment pass to copy the contents of a texture
