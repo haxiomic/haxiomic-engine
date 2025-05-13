@@ -10,6 +10,7 @@ import { ShaderMaterial } from "./ShaderMaterial.js";
  */
 export class BloomMipmapsMaterial extends ShaderMaterial<{
     source: Uniform<Texture | null>,
+    mipmapSource?: Uniform<Texture | null>,
     bloomStrength: Uniform<number>,
     bloomFalloff: Uniform<number>,
     minLod: Uniform<number>,
@@ -28,12 +29,13 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 
         const dynamicBloomAccumulation = /*glsl*/`
             for (float i = minLod; i < maxLod; i++) {
-                bloom += textureLod(source, vUv, i) * pow(i, -bloomFalloff);
+                bloom += textureLod(mipmapSource, vUv, i) * pow(i, -bloomFalloff);
             }`.replace(/\n/g, '\\\n');
         
         super({
             uniforms: {
                 source: new Uniform(null),
+                mipmapSource: new Uniform(null),
                 bloomStrength: new Uniform(0.01),
                 bloomFalloff: new Uniform(-0.138),
                 minLod: new Uniform(1),
@@ -54,6 +56,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             `,
             fragmentShader: /*glsl*/`
                 uniform sampler2D source;
+                uniform sampler2D mipmapSource;
 
                 uniform float bloomStrength;
 
@@ -104,7 +107,12 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
         }
 
         this.onBeforeRender = () => {
-            let mipmapCount: number = this.uniforms.source.value?.mipmaps?.length ?? 0;
+            // ensure there's always a mipmap source
+            if (!this.uniforms.mipmapSource!.value) {
+                this.uniforms.mipmapSource!.value = this.uniforms.source.value;
+            }
+
+            let mipmapCount: number = this.uniforms.mipmapSource!.value?.mipmaps?.length ?? 0;
             let maxLod = Math.max(0, mipmapCount - 1);
             this.uniforms.maxLod!.value = maxLod;
             const minLod = Math.min(this.uniforms.minLod.value, maxLod);
@@ -157,7 +165,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             let glsl = '';
             for (let i = minLod; i < maxLod; i++) {
                 let multiplier = Math.pow(i, -bloomFalloff);
-                glsl += /*glsl*/`bloom += textureLod(source, vUv, ${i.toFixed(1)}) * ${multiplier.toFixed(3)};\n`;
+                glsl += /*glsl*/`bloom += textureLod(mipmapSource, vUv, ${i.toFixed(1)}) * ${multiplier.toFixed(3)};\n`;
             }
             return glsl.replace(/\n/g, '\\\n');
         }
@@ -208,7 +216,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 
                     // Add GLSL line for this pair
                     // Use higher precision for sampleLod and K
-                    glsl += /*glsl*/ `bloom += textureLod(source, vUv, ${sampleLod.toFixed(5)}) * ${K.toFixed(5)};\n`;
+                    glsl += /*glsl*/ `bloom += textureLod(mipmapSource, vUv, ${sampleLod.toFixed(5)}) * ${K.toFixed(5)};\n`;
                 }
             }
 
@@ -230,8 +238,9 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 // Add GLSL line only if weight is significant
                 if (W_last > epsilon) {
                      // Use original precision spec for consistency or update as needed
-                    glsl += /*glsl*/ `bloom += textureLod(source, vUv, ${lastLod.toFixed(1)}) * ${W_last.toFixed(5)};\n`;
+                    glsl += /*glsl*/ `bloom += textureLod(mipmapSource, vUv, ${lastLod.toFixed(1)}) * ${W_last.toFixed(5)};\n`;
                 }
+
             }
 
             // Replace newlines for embedding if necessary (kept from original)
