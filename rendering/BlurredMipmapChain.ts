@@ -1,4 +1,5 @@
 import Blur1D from "../materials/Blur1D.js";
+import { RGBASwizzle, Swizzle } from "../materials/RGBASwizzle.ts";
 import { mipmapCount } from "../math/Math.js";
 import { Rendering } from "./Rendering.js";
 import RenderTargetStore from "./RenderTargetStore.js";
@@ -12,9 +13,11 @@ export function generateBlurredMipmaps(
         blurKernel_heightFraction: number,
         truncationSigma?: number,
         restoreGlobalState?: boolean,
+        swizzle?: Swizzle,
     }
 ) {
     const target = options.target;
+    const swizzle = options.swizzle;
     const blurKernel_heightFraction = options.blurKernel_heightFraction ?? 1/16;
     const blurKernel_pixels = blurKernel_heightFraction * target.height * .5;
     const truncationSigma = options.truncationSigma ?? 0.5;
@@ -61,7 +64,8 @@ export function generateBlurredMipmaps(
             1, 0, 
             sourceTexture,
             width, height,
-            sourceMipmapLevel
+            sourceMipmapLevel,
+            swizzle
         );
 
         width = Math.floor(width * 0.5);
@@ -85,7 +89,8 @@ export function generateBlurredMipmaps(
             0, 1,
             blurredMipsXPong.texture,
             width, height,
-            blurredXMipmapLevel
+            blurredXMipmapLevel,
+            swizzle
         );
 
         Rendering.shaderPass(renderer, {

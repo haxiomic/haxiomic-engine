@@ -1,6 +1,28 @@
 import { Texture, Uniform, Vector2 } from 'three';
-import { RawShaderMaterial } from './RawShaderMaterial.js';
+import { Swizzle } from './RGBASwizzle.ts';
 import { ShaderMaterial } from './ShaderMaterial.js';
+
+type AccumulationType = 'float' | 'vec2' | 'vec3' | 'vec4';
+
+function getAccumulationType(swizzle?: Swizzle): AccumulationType {
+	if (!swizzle) return 'vec4';
+	const swizzleLength = swizzle.length - 1;
+	if (swizzleLength === 0) return 'vec4';
+	if (swizzleLength === 1) return 'float';
+	if (swizzleLength === 2) return 'vec2';
+	if (swizzleLength === 3) return 'vec3';
+	return 'vec4';
+}
+
+function getAccumulationTypeVec4Cast(swizzle?: Swizzle): (input: string) => string {
+	if (!swizzle) return (input: string) => input;
+	const swizzleLength = swizzle.length - 1;
+	if (swizzleLength === 0) return (input: string) => input;
+	if (swizzleLength === 1) return (input: string) => `vec4(${input})`;
+	if (swizzleLength === 2) return (input => `vec4(${input}.rgrg)`);
+	if (swizzleLength === 3) return (input => `vec4(${input}.rgbr)`);
+	return (input => `vec4(${input})`);
+}
 
 /**
 	@author haxiomic
@@ -13,12 +35,23 @@ class Blur1D extends ShaderMaterial<{
 
 	static instances = new Map<string, Blur1D>();
 
-	static get(ctx: WebGLRenderingContext, kernel: number, truncationSigma: number, directionX: number, directionY: number, texture: Texture, width: number, height: number, textureLodLevel = 0): Blur1D {
+	static get(
+		ctx: WebGLRenderingContext,
+		kernel: number,
+		truncationSigma: number,
+		directionX: number,
+		directionY: number,
+		texture: Texture,
+		width: number,
+		height: number,
+		textureLodLevel = 0,
+		swizzle: Swizzle = '',
+	): Blur1D {
 		kernel = Blur1D.nearestBestKernel(kernel);
-		const key = `k${kernel},(${directionX},${directionY}):${truncationSigma}`;
+		const key = `k${kernel},(${directionX},${directionY}):${truncationSigma}:${swizzle}`;
 		let instance = Blur1D.instances.get(key);
 		if (!instance) {
-			instance = new Blur1D(ctx, kernel, truncationSigma, directionX, directionY, true);
+			instance = new Blur1D(ctx, kernel, truncationSigma, directionX, directionY, true, swizzle);
 			Blur1D.instances.set(key, instance);
 		}
 		instance.uniforms.texture.value = texture;
@@ -31,8 +64,28 @@ class Blur1D extends ShaderMaterial<{
 	directionX: number;
 	directionY: number;
 
-	constructor(ctx: WebGLRenderingContext, kernel: number, truncationSigma: number, directionX: number, directionY: number, linearSampling: boolean) {
-		const shaderParts = Blur1D.generateShaderParts(ctx, kernel, truncationSigma, directionX, directionY, linearSampling);
+	constructor(
+		ctx: WebGLRenderingContext,
+		kernel: number,
+		truncationSigma: number, 
+		directionX: number,
+		directionY: number,
+		linearSampling: boolean,
+		swizzle: Swizzle = '',
+	) {
+		const accumulationType = getAccumulationType(swizzle);
+		const castToVec4 = getAccumulationTypeVec4Cast(swizzle);
+
+		const shaderParts = Blur1D.generateShaderParts(
+			ctx,
+			kernel,
+			truncationSigma,
+			directionX,
+			directionY,
+			linearSampling,
+			swizzle
+		);
+	
 		super({
 			uniforms: {
 				texture: new Uniform<Texture | null>(null),
@@ -65,9 +118,11 @@ class Blur1D extends ShaderMaterial<{
 				void main() {
 					${shaderParts.fragmentVariables.join('\n')}
 
-					vec4 blend = vec4(0.0);
+					${accumulationType} blend = ${accumulationType}(0.0);
+
 					${shaderParts.textureSamples.join('\n')}
-					gl_FragColor = blend;
+
+					gl_FragColor = ${castToVec4('blend')};
 				}
 			`,
 		});
@@ -78,7 +133,15 @@ class Blur1D extends ShaderMaterial<{
 	}
 
 	// Continuing from the previously translated class...
-	static generateShaderParts(ctx: WebGLRenderingContext, kernel: number, truncationSigma: number, directionX: number, directionY: number, linearSampling: boolean) {
+	static generateShaderParts(
+		ctx: WebGLRenderingContext,
+		kernel: number,
+		truncationSigma: number,
+		directionX: number,
+		directionY: number,
+		linearSampling: boolean,
+		swizzle: Swizzle = '',
+	) {
 		// Generate sampling offsets and weights
 		const N = Blur1D.nearestBestKernel(kernel);
 		const centerIndex = (N - 1) / 2;
@@ -151,7 +214,7 @@ class Blur1D extends ShaderMaterial<{
 		}
 
 		for (let i = 0; i < offsets.length; i++) {
-			textureSamples.push(/*glsl*/`blend += textureLod(texture, sampleCoord${i}, textureLodLevel) * ${Blur1D.glslFloat(weights[i])};`);
+			textureSamples.push(/*glsl*/`blend += textureLod(texture, sampleCoord${i}, textureLodLevel)${swizzle} * ${Blur1D.glslFloat(weights[i])};`);
 		}
 
 		return {
