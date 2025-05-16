@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, ArrayCamera, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, Matrix4, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
+import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, ArrayCamera, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, Matrix4, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, Vector3, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
@@ -289,24 +289,52 @@ export class PhysicallyBasedViewer<
 
 		// Camera position caching
 		if (options.cacheCameraTransform) {
-			let cameraPositionKey = `${this.name}_cameraPosition`;
-			let cameraRotationKey = `${this.name}_cameraRotation`;
-			let cameraPosition = localStorage.getItem(cameraPositionKey);
-			let cameraRotation = localStorage.getItem(cameraRotationKey);
-			if (cameraPosition) {
-				let position = JSON.parse(cameraPosition);
-				this.camera.position.fromArray(position);
-			}
-			if (cameraRotation) {
-				let rotation = JSON.parse(cameraRotation);
-				this.camera.rotation.fromArray(rotation);
-			}
+			let cameraRestored = false;
+			const cameraPositionKey = `${this.name}_cameraPosition`;
+			const cameraRotationKey = `${this.name}_cameraRotation`;
+			const controlsPositionKey = `${this.name}_controlsPosition`;
+			const controlsTargetKey = `${this.name}_controlsTarget`;
+
+			// restore camera before the first frame
+			// this let's the user safely set the camera after new PhysicallyBasedViewer()
+			this.events.beforeRender.once(() => {
+				let cameraPosition = localStorage.getItem(cameraPositionKey);
+				let cameraRotation = localStorage.getItem(cameraRotationKey);
+				let controlsPosition = localStorage.getItem(controlsPositionKey);
+				let controlsTarget = localStorage.getItem(controlsTargetKey);
+
+				if (cameraPosition) {
+					let position = JSON.parse(cameraPosition);
+					this.camera.position.fromArray(position);
+				}
+				if (cameraRotation) {
+					let rotation = JSON.parse(cameraRotation);
+					this.camera.rotation.fromArray(rotation);
+				}
+				if (controlsPosition && this.controls instanceof OrbitControls) {
+					let position = JSON.parse(controlsPosition);
+					this.controls.target.fromArray(position);
+				}
+				if (controlsTarget && this.controls instanceof OrbitControls) {
+					let target = JSON.parse(controlsTarget);
+					this.controls.target.fromArray(target);
+				}
+
+				this.camera.updateMatrix();
+
+				cameraRestored = true;
+			}, Infinity);
 
 			// save the camera position to local storage
 			let _lastTransform = new Matrix4();
+			let _lastControls = {
+				target: new Vector3(),
+				position: new Vector3(),
+			}
 			let _lastSaveTimestamp_s = NaN;
 			let cacheInterval_s = 0.1;
 			this.events.beforeRender.on(({ camera, t_s }) => {
+				if (!cameraRestored) return;
 				let timeSinceLastSave_s = t_s - _lastSaveTimestamp_s;
 				let needsSave = timeSinceLastSave_s > cacheInterval_s || isNaN(_lastSaveTimestamp_s);
 				// check if the camera has moved
@@ -314,6 +342,30 @@ export class PhysicallyBasedViewer<
 					_lastTransform.copy(camera.matrixWorld);
 					localStorage.setItem(cameraPositionKey, JSON.stringify(camera.position.toArray()));
 					localStorage.setItem(cameraRotationKey, JSON.stringify(camera.rotation.toArray()));
+				}
+				// check if the controls have moved
+				if (needsSave) {
+					if (this.controls instanceof OrbitControls) {
+						this.controls.update();
+
+						if (!_lastControls.target.equals(this.controls.target)) {
+							_lastControls.target.copy(this.controls.target);
+							localStorage.setItem(controlsTargetKey, JSON.stringify(this.controls.target.toArray()));
+						}
+						if (!_lastControls.position.equals(this.controls.cursor)) {
+							_lastControls.position.copy(this.controls.cursor);
+							localStorage.setItem(controlsPositionKey, JSON.stringify(this.controls.cursor.toArray()));
+						}
+					} else {
+						// clear local state
+						_lastControls.target.set(NaN, NaN, NaN);
+						_lastControls.position.set(NaN, NaN, NaN);
+						localStorage.removeItem(controlsTargetKey);
+						localStorage.removeItem(controlsPositionKey);
+					}
+				}
+
+				if (needsSave) {
 					_lastSaveTimestamp_s = t_s;
 				}
 			});
