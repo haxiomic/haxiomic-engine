@@ -2,7 +2,7 @@ import { Color, Mesh, MeshStandardMaterial, Object3D, SphereGeometry } from "thr
 
 export class EnvironmentProbes extends Object3D {
 
-	constructor(gridSize: number = 4) {
+	constructor(gridSize: number = 4, distance: number = 0.25) {
 		super();
 		// add grid of spheres to test lighting
 		let sphereGeometry = new SphereGeometry(0.05, 32, 32);
@@ -17,7 +17,7 @@ export class EnvironmentProbes extends Object3D {
 						roughness: roughness,
 						metalness: metalness,
 					}));
-					sphere.position.set(i, j, k).subScalar((gridSize - 1) / 2).multiplyScalar(0.25);
+					sphere.position.set(i, j, k).subScalar((gridSize - 1) / 2).multiplyScalar(distance);
 					this.add(sphere);
 				}
 			}

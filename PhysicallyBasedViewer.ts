@@ -609,7 +609,7 @@ export class PhysicallyBasedViewer<
 	}
 
 	protected _loadEnvironmentPromise: Promise<any> = Promise.resolve(null);
-	loadEnvironment = (url: string | null, onProgress: (event: ProgressEvent) => void = () => { }) => {
+	loadEnvironment = (url: string | null | undefined, onProgress: (event: ProgressEvent) => void = () => { }) => {
 		if (!url) {
 			this.scene.environment = null;
 			this.scene.add(this.fallbackAmbientLight);
