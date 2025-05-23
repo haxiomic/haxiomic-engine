@@ -46,6 +46,9 @@ let cacheDir = findCacheDir({
 
 /**
  * If the compile time script is typescript, we use esbuild to compile it first
+ * 
+ * @param {string} workerPath path to the worker script
+ * @param {esbuild.BuildOptions} extraConfig esbuild config for compiling .ts to .js
  */
 async function buildScript(workerPath, extraConfig) {
     let scriptNameParts = path.basename(workerPath).split('.');
@@ -58,7 +61,6 @@ async function buildScript(workerPath, extraConfig) {
         delete extraConfig.entryPoints;
         delete extraConfig.outfile;
         delete extraConfig.outdir;
-        delete extraConfig.workerName;
         delete extraConfig.platform;
     }
 

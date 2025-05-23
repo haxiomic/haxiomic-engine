@@ -20,6 +20,8 @@ function inlineWorkerPlugin(extraConfig) {
 			// handle resolving import 'inline-worker!*' and import '*.worker.js'
 			// we also support worker-loader! prefix for compatibility with webpack
 			build.onResolve({filter: /^worker-loader!|^inline-worker!|\.worker\.(js|jsx|ts|tsx)$/}, async args => {
+
+				console.log('inline-worker-plugin resolving', args.path, args.importer, args.kind, args.namespace, args.resolveDir);
 				// remove loader prefix and mark the namespace so we can handle it in onLoad
 				let filePath = args.path.replace(/^worker-loader!|^inline-worker!/, '');
 				let resolved = await build.resolve(filePath, {
@@ -39,6 +41,8 @@ function inlineWorkerPlugin(extraConfig) {
 					namespace: 'inline-loader',
 				},
 				async ({path: workerPath}) => {
+					console.log('inline-worker-plugin loading', workerPath);
+
 					let workerCode = await buildWorker(workerPath, extraConfig);
 					return {
 						contents: `
@@ -65,6 +69,12 @@ let cacheDir = findCacheDir({
 	create: true,
 }) ?? path.resolve(__dirname, '.cache');
 
+/**
+ * 
+ * @param {string} workerPath path to the worker script
+ * @param {esbuild.BuildOptions} extraConfig esbuild config for compiling .ts to .js
+ * @returns 
+ */
 async function buildWorker(workerPath, extraConfig) {
 	let scriptNameParts = path.basename(workerPath).split('.');
 	scriptNameParts.pop();
@@ -76,7 +86,6 @@ async function buildWorker(workerPath, extraConfig) {
 		delete extraConfig.entryPoints;
 		delete extraConfig.outfile;
 		delete extraConfig.outdir;
-		delete extraConfig.workerName;
 	}
 
 	await esbuild.build({
