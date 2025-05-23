@@ -1,6 +1,5 @@
-import { Animator } from "../animation/Animator.js";
-import { ThreeAnimator } from "../animation/ThreeAnimator.ts";
-import { useInitializer } from "./useInitializer.ts";
+import { ThreeAnimator } from "../animation/ThreeAnimator.js";
+import { useInitializer } from "./useInitializer.js";
 
 /**
  * Returns an instance of Animator running an interval loop

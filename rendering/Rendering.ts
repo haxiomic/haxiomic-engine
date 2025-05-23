@@ -3,7 +3,7 @@ import { CopyMaterial, RawCopyMaterial } from "../materials/CopyMaterial.js";
 import { RawShaderMaterial } from "../materials/RawShaderMaterial.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 import ClipSpaceTriangle from "../objects/ClipSpaceTriangle.js";
-import { RGBASwizzle } from "../materials/RGBASwizzle.ts";
+import { RGBASwizzle } from "../materials/RGBASwizzle.js";
 
 export namespace Rendering {
 

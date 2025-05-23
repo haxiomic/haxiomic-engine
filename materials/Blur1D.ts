@@ -1,5 +1,5 @@
 import { Texture, Uniform, Vector2 } from 'three';
-import { Swizzle } from './RGBASwizzle.ts';
+import { Swizzle } from './RGBASwizzle.js';
 import { ShaderMaterial } from './ShaderMaterial.js';
 
 type AccumulationType = 'float' | 'vec2' | 'vec3' | 'vec4';
