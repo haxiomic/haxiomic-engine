@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
 import { Animator } from "../animation/Animator.js";
+import { useInitializer } from "./useInitializer.ts";
 
 /**
  * Returns an instance of Animator running an interval loop
@@ -7,21 +7,19 @@ import { Animator } from "../animation/Animator.js";
  * @returns { Animator } instance of Animator
  */
 export function useAnimator(interval_ms: number | null | 'animationFrame' = 'animationFrame') {
-	const animatorRef = useRef<Animator | null>(null);
-	function getAnimator() {
-		return animatorRef.current = animatorRef.current ?? new Animator();
-	}
-
-	// run animation loop while component exists
-	useEffect(() => {
-		if (interval_ms === null) {
-			return;
+	return useInitializer(() => {
+		let animator = new Animator();
+		if (interval_ms !== null) {
+			if (interval_ms === 'animationFrame') {
+				animator.startAnimationFrameLoop();
+			} else {
+				animator.startIntervalLoop(interval_ms);
+			}
 		}
-		if (interval_ms === 'animationFrame') {
-			return getAnimator().startAnimationFrameLoop().stop;
-		}
-		return getAnimator().startIntervalLoop(interval_ms).stop;
-	}, [interval_ms]);
 
-	return getAnimator();
+		return animator;
+	}, (animator) => {
+		animator.stop();
+		animator.removeAll();
+	});
 }

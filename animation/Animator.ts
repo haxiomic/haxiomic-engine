@@ -154,7 +154,16 @@ export class Animator {
 		return dt_s;
 	}
 
+	protected _currentLoopControl: { stop: () => void, start: () => void } | null = null;
+
+	/**
+	 * Start the animation loop using requestAnimationFrame
+	 * 
+	 * This will stop any existing animation loop
+	 */
 	startAnimationFrameLoop() {
+		this.stop();
+
 		let frameLoopHandle = -1;
 		let frameLoop = () => {
 			this.tick();
@@ -162,7 +171,7 @@ export class Animator {
 		};
 		frameLoop();
 
-		return {
+		this._currentLoopControl = {
 			stop: () => {
 				window.cancelAnimationFrame(frameLoopHandle);
 			},
@@ -172,7 +181,14 @@ export class Animator {
 		}
 	}
 
+	/**
+	 * Start the animation loop using setTimeout
+	 * 
+	 * This will stop any existing animation loop
+	 */
 	startIntervalLoop(interval_ms: number = 1000 / 240) {
+		this.stop();
+
 		let intervalHandle = -1;
 		let intervalLoop = () => {
 			this.tick();
@@ -180,13 +196,20 @@ export class Animator {
 		};
 		intervalLoop();
 
-		return {
+		this._currentLoopControl = {
 			stop: () => {
 				window.clearTimeout(intervalHandle);
 			},
 			start: () => {
 				intervalLoop();
 			}
+		}
+	}
+
+	stop() {
+		if (this._currentLoopControl != null) {
+			this._currentLoopControl.stop();
+			this._currentLoopControl = null;
 		}
 	}
 

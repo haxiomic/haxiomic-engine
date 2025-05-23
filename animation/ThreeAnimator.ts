@@ -316,6 +316,10 @@ export class ThreeAnimator {
 		return this.animator.startIntervalLoop(interval_ms);
 	}
 
+	stop() {
+		this.animator.stop();
+	}
+
 	private stepQuaternionSprings(dt_s: number) {
 		// step quaternion springs
 		this.quaternionSprings.forEach((spring, q) => {
