@@ -9,6 +9,10 @@ export enum QuaternionSpringMode {
 
 type SupportedTypes = Vector4 | Vector3 | Vector2 | Quaternion | Euler | number;
 
+type KeysOfType<T, U> = {
+  [K in keyof T]: T[K] extends U ? K : never
+}[keyof T]
+
 /**
  * Extends Animator to add support for animating vectors and quaternions
  */
@@ -40,7 +44,7 @@ export class ThreeAnimator {
 
 	setTo<
 		Obj,
-		Name extends keyof Obj,
+		Name extends KeysOfType<Obj, SupportedTypes>,
 		T extends Obj[Name] & SupportedTypes
 	>(
 		object: Obj,
@@ -81,7 +85,7 @@ export class ThreeAnimator {
 
 	springTo<
 		Obj,
-		Name extends keyof Obj,
+		Name extends KeysOfType<Obj, SupportedTypes>,
 		T extends Obj[Name] & SupportedTypes
 	>(
 		object: Obj,
@@ -128,7 +132,7 @@ export class ThreeAnimator {
 
 	customTweenTo<
 		Obj,
-		Name extends keyof Obj,
+		Name extends KeysOfType<Obj, SupportedTypes>,
 		T extends Obj[Name] & SupportedTypes
 	>(
 		object: Obj,
@@ -167,7 +171,7 @@ export class ThreeAnimator {
 
 	linearTo<
 		Obj,
-		Name extends keyof Obj,
+		Name extends KeysOfType<Obj, SupportedTypes>,
 		T extends Obj[Name] & SupportedTypes
 	>(
 		object: Obj,
@@ -180,7 +184,7 @@ export class ThreeAnimator {
 
 	easeInOutTo<
 		Obj,
-		Name extends keyof Obj,
+		Name extends KeysOfType<Obj, SupportedTypes>,
 		T extends Obj[Name] & SupportedTypes
 	>(
 		object: Obj,
@@ -193,7 +197,7 @@ export class ThreeAnimator {
 
 	easeInTo<
 		Obj,
-		Name extends keyof Obj,
+		Name extends KeysOfType<Obj, SupportedTypes>,
 		T extends Obj[Name] & SupportedTypes
 	>(
 		object: Obj,
@@ -206,7 +210,7 @@ export class ThreeAnimator {
 
 	easeOutTo<
 		Obj,
-		Name extends keyof Obj,
+		Name extends KeysOfType<Obj, SupportedTypes>,
 		T extends Obj[Name] & SupportedTypes
 	>(
 		object: Obj,
@@ -227,7 +231,7 @@ export class ThreeAnimator {
 
 	remove<
 		Obj,
-		Name extends keyof Obj
+		Name extends KeysOfType<Obj, SupportedTypes>,
 	>(
 		object: Obj,
 		field: Name
@@ -263,7 +267,7 @@ export class ThreeAnimator {
 
 	getVelocity<
 		Obj,
-		Name extends keyof Obj,
+		Name extends KeysOfType<Obj, SupportedTypes>,
 		T extends Obj[Name] &
 			(Vector4 | Vector3 | Vector2 | { directionVelocity: Vector3, rollVelocity: number } | Euler | number) // supported types
 	>(
