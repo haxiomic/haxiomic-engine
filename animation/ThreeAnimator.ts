@@ -9,9 +9,11 @@ export enum QuaternionSpringMode {
 
 type SupportedTypes = Vector4 | Vector3 | Vector2 | Quaternion | Euler | number;
 
-type KeysOfType<T, U> = {
-  [K in keyof T]: T[K] extends U ? K : never
-}[keyof T]
+// type KeysOfType<T, U> = {
+//   [K in keyof T]: T[K] extends U ? K : never
+// }[keyof T]
+
+type KeysOfType<T, U> = keyof T;
 
 /**
  * Extends Animator to add support for animating vectors and quaternions
