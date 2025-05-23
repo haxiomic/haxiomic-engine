@@ -9,7 +9,9 @@
   "types": "ambient-declarations.d.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "prepare": "tsc"
+    "prepare": "tsc",
+    "build": "tsc",
+    "dev": "tsc --watch"
   },
   "dependencies": {
     "@types/node": "^22.10.2",
