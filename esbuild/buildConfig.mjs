@@ -10,16 +10,6 @@ export const buildConfig = {
   plugins: [
     glslPlugin({ minify: false }),
     compileTimePlugin(),
+    inlineWorkerPlugin({})
   ],
-  // alias our fork of three (@haxiomic/three-dev) to 'three'
-  alias: {
-    'three': 'three',
-  },
 };
-
-// Add inline worker plugin
-// we do this after so we can use same settings for compiling inline workers
-buildConfig.plugins?.push(inlineWorkerPlugin({
-  ...buildConfig,
-  plugins: [...buildConfig.plugins], // avoid cycles
-}));
