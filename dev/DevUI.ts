@@ -1,5 +1,5 @@
 import { AdditiveBlending, CustomBlending, Material, MultiplyBlending, NoBlending, NormalBlending, SubtractiveBlending } from 'three';
-import { GUI } from '../lib/lilgui.module.js';
+import { GUI, Controller } from '../lib/lilgui.module.js';
 
 
 // add hashController to GUI types
