@@ -1,5 +1,5 @@
 import { Texture, Uniform, Vector2 } from 'three';
-import { Swizzle } from './RGBASwizzle.js';
+import { Swizzle } from './Swizzle.js';
 import { ShaderMaterial } from './ShaderMaterial.js';
 
 type AccumulationType = 'float' | 'vec2' | 'vec3' | 'vec4';
@@ -132,7 +132,6 @@ class Blur1D extends ShaderMaterial<{
 		this.directionY = directionY;
 	}
 
-	// Continuing from the previously translated class...
 	static generateShaderParts(
 		ctx: WebGLRenderingContext,
 		kernel: number,

@@ -1,5 +1,5 @@
 import Blur1D from "../materials/Blur1D.js";
-import { RGBASwizzle, Swizzle } from "../materials/RGBASwizzle.js";
+import { RGBASwizzle, Swizzle } from "../materials/Swizzle.js";
 import { mipmapCount } from "../math/Math.js";
 import { Rendering } from "./Rendering.js";
 import RenderTargetStore from "./RenderTargetStore.js";
