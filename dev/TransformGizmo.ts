@@ -371,41 +371,45 @@ class TransformGizmoComponent extends Mesh<BufferGeometry, MeshBasicMaterial> {
 		this.hoverColor = new Color(color).offsetHSL(0, 0.1, 0.35)
 			.multiplyScalar(4.); // beyond 1 for bloom effect
 
-		makeInteractive(this, {
+		let thisInteractive = makeInteractive(this, {
 			sortPriority: interactionPriority,
 			cursor: 'pointer',
 			occludePointerEvents: true,
-			capturePointer: true,
-			onPointerOver: () => this.hovered = true,
-			onPointerOut: () => this.hovered = false,
+			defaultCapturePointer: true,
+		});
 
-			onPointerDown: (event, raycaster) => {
-				if (event.buttons !== 1) return false;
-				event.preventDefault();
-				event.stopPropagation();
-				this.selected = true;
+		thisInteractive.interaction.events.pointerOver.addListener(() => {
+			this.hovered = true;
+		});
+		thisInteractive.interaction.events.pointerOut.addListener(() => {
+			this.hovered = false;
+		});
+		thisInteractive.interaction.events.pointerDown.addListener(({ event, raycaster, capturePointer }) => {
+			if (event.buttons !== 1) return false;
+			event.preventDefault();
+			event.stopPropagation();
+			this.selected = true;
 
-				this.handleDragStart(raycaster);
+			this.handleDragStart(raycaster);
 
-				return true; // capture pointer
-			},
-			onPointerMove: (event, captured, raycaster) => {
-				if (captured) {
-					event.preventDefault()
-					event.stopPropagation()
+			capturePointer();
+		});
+		thisInteractive.interaction.events.pointerMove.addListener(({ event, raycaster, captured }) => {
+			if (captured && this.selected) {
+				event.preventDefault()
+				event.stopPropagation()
 
-					this.handleDragUpdate(raycaster);
-				}
-			},
-			onPointerUp: (event, captured, raycaster) => {
-				if (captured) {
-					event.preventDefault()
-					event.stopPropagation()
-					this.selected = false;
+				this.handleDragUpdate(raycaster);
+			}
+		});
+		thisInteractive.interaction.events.pointerUp.addListener(({ event, raycaster, captured }) => {
+			if (captured && this.selected) {
+				event.preventDefault()
+				event.stopPropagation()
+				this.selected = false;
 
-					this.handleDragEnd(raycaster);
-				}
-			},
+				this.handleDragEnd(raycaster);
+			}
 		});
 	}
 

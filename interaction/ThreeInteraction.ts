@@ -5,15 +5,15 @@ import { Layer } from "../Layer.js";
 
 export type PointerEventExtended = EventEmitter.Emitted<PointerEvent>;
 
-export default class ThreeInteraction {
+export class ThreeInteraction {
 
     readonly interactionManager: InteractionManager
     scene: Scene
     camera: Camera
     raycaster = new Raycaster()
 
-    readonly capturedPointers: { [id: number]: Array<InteractiveObject> | undefined } = {}
-    readonly hoveredObjects: { [id: number]: Array<InteractiveObject> | undefined } = {}
+    readonly capturedPointers: { [id: number]: Array<InteractiveObject3D> | undefined } = {}
+    readonly hoveredObjects: { [id: number]: Array<InteractiveObject3D> | undefined } = {}
 
     private listeners: Array<{remove: () => void}>
 
@@ -37,28 +37,36 @@ export default class ThreeInteraction {
         }
     }
 
-    protected onPointerDown = (e: PointerEventExtended) => {
-        for (let intersect of this.intersectSceneWithPointer(e)) {
-            let object = intersect.object as InteractiveObject;
+    protected onPointerDown = (event: PointerEventExtended) => {
+        for (let intersection of this.intersectSceneWithPointer(event) as Array<Intersection<InteractiveObject3D>>) {
+            let object = intersection.object;
 
-            let callbackAllowedCapture: boolean | undefined = undefined
-            if (object.userData.onPointerDown != null) {
-                let ret = object.userData.onPointerDown(e, this.raycaster, intersect);
-                if (ret != null) {
-                    callbackAllowedCapture = ret;
-                }
+            let capturedPointer: boolean = (object.interaction.defaultCapturePointer ?? true)
+            const preventCaptureCallback = () => {
+                capturedPointer = false
+            }
+            const capturePointerCallback = () => {
+                capturedPointer = true
             }
 
-            let capturePointer = (object.userData.capturePointer ?? true) && callbackAllowedCapture !== false
-            if (capturePointer) {
-                this.interactionManager.el.setPointerCapture(e.pointerId)
+            object.interaction.events.pointerDown.dispatch({
+                event,
+                target: object,
+                raycaster: this.raycaster,
+                intersection,
+                preventCapture: preventCaptureCallback,
+                capturePointer: capturePointerCallback,
+            });
 
-                let capturedPointers = this.capturedPointers[e.pointerId] ?? []
+            if (capturedPointer) {
+                this.interactionManager.el.setPointerCapture(event.pointerId)
+
+                let capturedPointers = this.capturedPointers[event.pointerId] ?? []
                 capturedPointers.push(object)
-                this.capturedPointers[e.pointerId] = capturedPointers
+                this.capturedPointers[event.pointerId] = capturedPointers
             }
 
-            if (e.propagationStopped) {
+            if (event.propagationStopped) {
                 return;
             }
         }
@@ -66,18 +74,7 @@ export default class ThreeInteraction {
     protected onPointerMove = (e: PointerEventExtended) => {
         let cursor: string | undefined | null = null;
 
-        let capturedObjects = this.capturedPointers[e.pointerId];
-        if (capturedObjects != null) {
-            // reverse iterate so that top-most object gets first chance to set cursor
-            for (let i = capturedObjects.length - 1; i >= 0; i--) {
-                let capturedObject = capturedObjects[i];
-                if (capturedObject.userData.onPointerMove != null) {
-                    capturedObject.userData.onPointerMove(e, true, this.raycaster, undefined)
-                }
-
-                cursor = capturedObject.userData.cursor
-            }
-        }
+        let capturedObjects = this.capturedPointers[e.pointerId] ?? [];
 
         let intersections = this.intersectSceneWithPointer(e);
 
@@ -94,71 +91,126 @@ export default class ThreeInteraction {
                 }
             }
             if (!included) {
-                if (object.userData.onPointerOut != null) {
-                    let captured: boolean = capturedObjects?.indexOf(object) !== -1;
-                    object.userData.onPointerOut(e, captured, this.raycaster)
-                }
+                object.interaction.events.pointerOut.dispatch({
+                    event: e,
+                    target: object,
+                    captured: capturedObjects.indexOf(object) !== -1,
+                    raycaster: this.raycaster,
+                });
                 hoveredObjects.splice(hoveredObjects.indexOf(object), 1)
             }
         }
 
-        for (let intersect of intersections) {
-            let object = intersect.object as InteractiveObject;
+        // copy capturedObjects
+        let capturedObjectsStillNeedingDispatch = [...capturedObjects];
 
-            let captured: boolean = capturedObjects?.indexOf(object) !== -1;
+        for (let intersection of intersections as Array<Intersection<InteractiveObject3D>>) {
+            let object = intersection.object;
+
+            let captured: boolean = capturedObjects.indexOf(object) !== -1;
 
             // if captured, then we've already dispatched move for object and we can skip
-            if (!captured && object.userData.onPointerMove != null) {
-                object.userData.onPointerMove(e, false, this.raycaster, intersect)
-            }
+            object.interaction.events.pointerMove.dispatch({
+                event: e,
+                target: object,
+                captured,
+                raycaster: this.raycaster,
+                intersection,
+            });
 
-            // top-most object sets the cursor
-            if (cursor == null && object.userData.cursor != null) {
-                cursor = object.userData.cursor
-            }
-
-            if (hoveredObjects.indexOf(object) === -1) {
-                hoveredObjects.push(object)
-                if (object.userData.onPointerOver != null) {
-                    object.userData.onPointerOver(e, captured, this.raycaster, intersect)
+            // remove from capturedObjectsStillNeedingDispatch if it was dispatched
+            if (captured) {
+                let index = capturedObjectsStillNeedingDispatch.indexOf(object);
+                if (index !== -1) {
+                    capturedObjectsStillNeedingDispatch.splice(index, 1);
                 }
             }
 
+            // top-most object sets the cursor
+            if (cursor == null && object.interaction.cursor != null) {
+                cursor = object.interaction.cursor
+            }
+
+            // dispatch pointerOver for object if not already hovered
+            if (hoveredObjects.indexOf(object) === -1) {
+                hoveredObjects.push(object)
+                object.interaction.events.pointerOver.dispatch({
+                    event: e,
+                    target: object,
+                    captured,
+                    raycaster: this.raycaster,
+                    intersection: intersection,
+                });
+            }
+
             if (e.propagationStopped) {
-                return;
+                break;
+            }
+        }
+
+        // for all captured objects that have not already dispatched pointerMove, dispatch pointerMove
+        // reverse iterate so that top-most object gets first chance to set cursor
+        for (let i = capturedObjectsStillNeedingDispatch.length - 1; i >= 0; i--) {
+            let capturedObject = capturedObjectsStillNeedingDispatch[i];
+            capturedObject.interaction.events.pointerMove.dispatch({
+                event: e,
+                target: capturedObject,
+                captured: true,
+                raycaster: this.raycaster,
+                intersection: undefined, // no intersection for captured objects
+            });
+
+            if (cursor == null) {
+                cursor = capturedObject.interaction.cursor
             }
         }
 
         this.setCursor(cursor ?? '')
     }
     protected onPointerUp = (e: PointerEventExtended) => {
-        let capturedObjects = this.capturedPointers[e.pointerId]
+        let capturedObjects = this.capturedPointers[e.pointerId] ?? [];
         delete this.capturedPointers[e.pointerId]
         delete this.hoveredObjects[e.pointerId]
         this.interactionManager.el.releasePointerCapture(e.pointerId)
 
-        if (capturedObjects != null) {
-            for (let i = capturedObjects.length - 1; i >= 0; i--) {
-                let capturedObject = capturedObjects[i];
-                if (capturedObject.userData.onPointerUp != null) {
-                    capturedObject.userData.onPointerUp(e, true, this.raycaster)
-                }
-            }
-        }
+        const capturedObjectsStillNeedingDispatch = [...capturedObjects];
 
-        for (let intersect of this.intersectSceneWithPointer(e)) {
-            let object = intersect.object as InteractiveObject;
+        for (let intersect of this.intersectSceneWithPointer(e) as Array<Intersection<InteractiveObject3D>>) {
+            let object = intersect.object;
 
             // already dispatched for object
-            if (capturedObjects?.indexOf(object) !== -1) continue;
+            let captured = capturedObjects.indexOf(object) !== -1;
 
-            if (object.userData.onPointerUp != null) {
-                object.userData.onPointerUp(e, false, this.raycaster, intersect)
+            object.interaction.events.pointerUp.dispatch({
+                event: e,
+                target: object,
+                captured,
+                raycaster: this.raycaster,
+                intersection: intersect,
+            });
+
+            // remove from capturedObjectsStillNeedingDispatch if it was dispatched
+            if (captured) {
+                let index = capturedObjectsStillNeedingDispatch.indexOf(object);
+                if (index !== -1) {
+                    capturedObjectsStillNeedingDispatch.splice(index, 1);
+                }
             }
 
             if (e.propagationStopped) {
-                return;
+                break;
             }
+        }
+
+        for (let i = capturedObjectsStillNeedingDispatch.length - 1; i >= 0; i--) {
+            let capturedObject = capturedObjectsStillNeedingDispatch[i];
+            capturedObject.interaction.events.pointerUp.dispatch({
+                event: e,
+                target: capturedObject,
+                captured: true,
+                raycaster: this.raycaster,
+                intersection: undefined, // no intersection for captured objects
+            });
         }
     }
 
@@ -174,7 +226,7 @@ export default class ThreeInteraction {
         let includedObjects: Array<Intersection<Object3D>> = []
         for (let intersection of intersections) {
             // skip object if not visible
-            if (intersection.object.userData.interactiveWhenInvisible !== true) {
+            if (intersection.object.interaction?.interactiveWhenInvisible !== true) {
                 if (!this.isVisible(intersection.object)) continue;
             }
 
@@ -182,8 +234,8 @@ export default class ThreeInteraction {
         }
         // allow objects to override sorting
         includedObjects.sort((a, b) => {
-            let aSortPriority = a.object.userData.sortPriority ?? 0;
-            let bSortPriority = b.object.userData.sortPriority ?? 0;
+            let aSortPriority = a.object.interaction?.sortPriority ?? 0;
+            let bSortPriority = b.object.interaction?.sortPriority ?? 0;
             if (aSortPriority !== bSortPriority) {
                 return bSortPriority - aSortPriority;
             } else {
@@ -194,7 +246,7 @@ export default class ThreeInteraction {
         // now we've sorted, remove objects occluded by the first `occludePointerEvents` object
         for (let i = 0; i < includedObjects.length; i++) {
             let object = includedObjects[i].object;
-            if (object.userData.occludePointerEvents === true) {
+            if (object.interaction?.occludePointerEvents === true) {
                 // remove all objects after this one
                 includedObjects.splice(i + 1)
                 break;
@@ -233,17 +285,17 @@ export default class ThreeInteraction {
         return visible
     }
 
-    static makeInteractive<T extends Object3D>(object: T, settings: InteractionSettings): T & InteractiveObject {
+    makeInteractive<T extends Object3D>(object: T, settings: Omit<InteractionFields, 'events'>): InteractiveObject3D<T> {
         return makeInteractive(object, settings);
     }
 
 }
 
-export type InteractionSettings = {
+export type InteractionFields = {
     cursor?: string,
 
     /** If pointer events should continue when outside the object if started within. Default `true` */
-    capturePointer?: boolean,
+    defaultCapturePointer?: boolean,
 
     /** If true, prevents objects behind from receiving events. Default: `false` */
     occludePointerEvents?: boolean,
@@ -256,23 +308,76 @@ export type InteractionSettings = {
      * This takes precedent over `occludePointerEvents` */
     sortPriority?: number,
 
-    /**
-     * return false to prevent capture
-     */
-    onPointerDown?: (event: PointerEventExtended, raycaster: Raycaster, intersection: Intersection) => void | boolean
-    onPointerMove?: (event: PointerEventExtended, captured: boolean, raycaster: Raycaster, intersection?: Intersection) => void
-    onPointerUp?: (event: PointerEventExtended, captured: boolean, raycaster: Raycaster, intersection?: Intersection) => void
-
-    onPointerOver?: (event: PointerEventExtended, captured: boolean, raycaster: Raycaster, intersection: Intersection) => void
-    onPointerOut?: (event: PointerEventExtended, captured: boolean, raycaster: Raycaster) => void
+    events: {
+        pointerDown: EventEmitter<{
+            event: PointerEventExtended,
+            target: InteractiveObject3D,
+            raycaster: Raycaster,
+            intersection: Intersection<InteractiveObject3D>
+            /** If called, capture will be prevented */
+            preventCapture(): void
+            /** If called, pointer will be captured */
+            capturePointer(): void
+        }>,
+        pointerMove: EventEmitter<{
+            event: PointerEventExtended,
+            target: InteractiveObject3D,
+            captured: boolean,
+            raycaster: Raycaster,
+            intersection?: Intersection<InteractiveObject3D>
+        }>,
+        pointerUp: EventEmitter<{
+            event: PointerEventExtended,
+            target: InteractiveObject3D,
+            captured: boolean,
+            raycaster: Raycaster,
+            intersection?: Intersection<InteractiveObject3D>
+        }>,
+        pointerOver: EventEmitter<{
+            event: PointerEventExtended,
+            target: InteractiveObject3D,
+            captured: boolean,
+            raycaster: Raycaster,
+            intersection: Intersection<InteractiveObject3D>
+        }>,
+        pointerOut: EventEmitter<{
+            event: PointerEventExtended,
+            target: InteractiveObject3D,
+            captured: boolean,
+            raycaster: Raycaster
+        }>,
+    }
+    
 }
 
-export type InteractiveObject = {
-    userData: InteractionSettings
+export type InteractiveObject3D<T extends Object3D = Object3D> = T & {
+    interaction: InteractionFields
 }
 
-export function makeInteractive<T extends Object3D>(object: T, settings: InteractionSettings): T & InteractiveObject {
-    object.layers.enable(Layer.Interactive);
-    object.userData = settings
-    return object
+// extends Object3D to inclue interaction fields
+declare module 'three' {
+    interface Object3D {
+        /**
+         * Pointer interaction fields for this object.
+         * 
+         * See ThreeInteraction.makeInteractive to enable
+         */
+        interaction?: InteractionFields
+    }
+}
+
+export function makeInteractive<T extends Object3D>(object: T, settings: Omit<InteractionFields, 'events'>): InteractiveObject3D<T> {
+    let interactiveObject = object as InteractiveObject3D<T>;
+    interactiveObject.layers.enable(Layer.Interactive);
+    interactiveObject.interaction = {
+        ...settings,
+        events: {
+            pointerDown: new EventEmitter(),
+            pointerMove: new EventEmitter(),
+            pointerUp: new EventEmitter(),
+            pointerOver: new EventEmitter(),
+            pointerOut: new EventEmitter(),
+        }
+    }
+    return interactiveObject;
 }
