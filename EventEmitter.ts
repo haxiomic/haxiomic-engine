@@ -96,6 +96,10 @@ export class EventEmitter<Payload = undefined, E = EventEmitter.Emitted<Payload>
         return this.listeners.length > 0
     }
 
+    public removeAllListeners() {
+        this.listeners = []
+    }
+
     private sortPriorityDescending() {
         this.listeners.sort((a, b) => b.priority - a.priority)
     }
