@@ -11,7 +11,7 @@ import { EnvironmentProbes } from "./dev/EnvironmentProbes.js";
 import { TextureVisualizer } from "./dev/TextureVisualizer.js";
 import { EventEmitter } from "./EventEmitter.js";
 import InteractionManager from "./interaction/InteractionManager.js";
-import ThreeInteraction from "./interaction/ThreeInteraction.js";
+import { ThreeInteraction } from "./interaction/ThreeInteraction.js";
 import { Layer } from "./Layer.js";
 import { ObjectUtils } from "./ObjectUtils.js";
 import { Rendering } from "./rendering/Rendering.js";
