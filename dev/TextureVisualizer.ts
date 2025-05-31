@@ -2,6 +2,7 @@ import { DoubleSide, LinearFilter, LinearMipMapLinearFilter, MathUtils, Mesh, Me
 import { Layer } from "../Layer.js";
 import { RGBASwizzle } from "../materials/Swizzle.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
+import { DualRenderTarget } from "../rendering/DualRenderTarget.js";
 
 export class TextureVisualizer {
 
@@ -14,8 +15,11 @@ export class TextureVisualizer {
 		this.root.layers.set(Layer.Developer);
 	}
 
-	displayTexture(id: string, texture: Texture, lodLevel: number = 0, swizzle: RGBASwizzle = '') {
+	displayTexture(id: string, textureOrDualTarget: Texture | DualRenderTarget, lodLevel: number = 0, swizzle: RGBASwizzle = '') {
 		let texturePlane = this.texturePlanes.get(id);
+		let texture: Texture = textureOrDualTarget instanceof DualRenderTarget
+			? textureOrDualTarget.getReadRenderTarget().texture
+			: textureOrDualTarget;
 
 		if (texturePlane == null) {
 			let material = new TextureDisplayMaterial({
@@ -66,6 +70,15 @@ export class TextureVisualizer {
 		}
 
 		texturePlane.material.set(texture, lodLevel, swizzle);
+
+		if (textureOrDualTarget instanceof DualRenderTarget) {
+			let texture = textureOrDualTarget.getReadRenderTarget().texture;
+			// update texture on before render
+			texturePlane.onBeforeRender = (renderer, scene, camera, geometry, material, group) => {
+				// update texture
+				texturePlane.material.set(texture, lodLevel, swizzle);
+			}
+		}
 
 		this.layout();
 	}
