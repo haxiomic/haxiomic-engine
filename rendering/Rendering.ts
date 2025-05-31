@@ -289,8 +289,11 @@ export namespace Rendering {
 						gl_Position = vec4(position, 1.0);
 					}
 				`,
-				uniforms: options.uniforms ?? {},
+				uniforms: {},
 			});
+			for (let key in options.uniforms ?? {}) {
+				(shader as any).uniforms[key] = { value: options.uniforms?.[key] };
+			}
 			shaderPassMaterialCache[shaderKey] = shader;
 		}
 
