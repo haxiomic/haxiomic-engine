@@ -102,7 +102,7 @@ export class PosDeltaSampler {
     update(pointerUv: Vector2) {
         this.uPointerUv.value.copy(pointerUv);
 
-        Rendering.shaderPass(this.renderer, {
+        Rendering.shaderMaterialPass(this.renderer, {
             restoreGlobalState: true,
             target: this.renderTarget.getRenderTarget(),
             clearDepth: false,

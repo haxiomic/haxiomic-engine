@@ -5,8 +5,8 @@ export class DualRenderTarget {
 
     readonly uniform: Uniform<Texture>;
 
-    _width: number;
-    _height: number;
+    protected _width: number;
+    protected _height: number;
 
     get width() {
         return this._width;

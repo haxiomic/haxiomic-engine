@@ -161,7 +161,7 @@ export class FluidSimulation {
 
         // advect velocity
         this.advectShader.uniforms.target.value = this.velocityTexture.getTexture();
-        Rendering.shaderPass(this.renderer, {
+        Rendering.shaderMaterialPass(this.renderer, {
             target: this.velocityTexture.getRenderTarget(),
             shader: this.advectShader,
             restoreGlobalState: false,
@@ -174,7 +174,7 @@ export class FluidSimulation {
         this.velocityTexture.swap();
 
         // compute velocity field divergence
-        Rendering.shaderPass(this.renderer, {
+        Rendering.shaderMaterialPass(this.renderer, {
             target: this.divergenceTexture,
             shader: this.divergenceShader,
             restoreGlobalState: false,
@@ -182,7 +182,7 @@ export class FluidSimulation {
 
         // solve pressure
         for (let i = 0; i < this.iterations; i++) {
-            Rendering.shaderPass(this.renderer, {
+            Rendering.shaderMaterialPass(this.renderer, {
                 target: this.pressureTexture.getRenderTarget(),
                 shader: this.pressureSolveShader,
                 restoreGlobalState: false,
@@ -191,7 +191,7 @@ export class FluidSimulation {
         }
 
         // subtract pressure gradient from velocity
-        Rendering.shaderPass(this.renderer, {
+        Rendering.shaderMaterialPass(this.renderer, {
             target: this.velocityTexture.getRenderTarget(),
             shader: this.pressureGradientSubtractShader,
             restoreGlobalState: false,
@@ -208,7 +208,7 @@ export class FluidSimulation {
 
         // advect color
         this.advectShader.uniforms.target.value = this.colorTexture.getTexture();
-        Rendering.shaderPass(this.renderer, {
+        Rendering.shaderMaterialPass(this.renderer, {
             target: this.colorTexture.getRenderTarget(),
             shader: this.advectShader,
             restoreGlobalState: false,

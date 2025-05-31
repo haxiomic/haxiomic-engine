@@ -74,7 +74,7 @@ export function generateBlurredMipmaps(
         const blurredXMipmapLevel = i - 1;
         // console.log(`Blurring mipmap level ${i} ${width}x${height}, source mipmap level ${sourceMipmapLevel}, blurredXMipmapLevel ${blurredXMipmapLevel}`);
 
-        Rendering.shaderPass(renderer, {
+        Rendering.shaderMaterialPass(renderer, {
             target: blurredMipsXPong,
             targetMipmapLevel: blurredXMipmapLevel,
             shader: blurXShader,
@@ -93,7 +93,7 @@ export function generateBlurredMipmaps(
             swizzle
         );
 
-        Rendering.shaderPass(renderer, {
+        Rendering.shaderMaterialPass(renderer, {
             target: target,
             targetMipmapLevel: i,
             restoreGlobalState: false,

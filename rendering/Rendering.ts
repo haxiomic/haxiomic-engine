@@ -245,7 +245,7 @@ export namespace Rendering {
 		 */
 		clearStencil?: boolean,
 	}
-	export function shaderPass<U extends Uniforms>(renderer: WebGLRenderer, options: ShaderPassOptions<U>) {
+	export function shaderMaterialPass<U extends Uniforms>(renderer: WebGLRenderer, options: ShaderPassOptions<U>) {
 		if (options.uniforms != null) {
 			for (let key in options.uniforms) {
 				(options.shader as any).uniforms[key].value = options.uniforms[key];
@@ -266,6 +266,37 @@ export namespace Rendering {
 			toneMappingExposure: options.toneMappingExposure ?? 1.0,
 			restoreGlobalState: options.restoreGlobalState,
 			viewport: options.viewport,
+		});
+	}
+
+	const shaderPassMaterialCache: { [key: string]: Material } = {};
+	export function shaderPass(
+		renderer: WebGLRenderer,
+		options: Omit<Rendering.ShaderPassOptions, 'shader'> & {
+			shaderKey?: string,
+			fragmentShader: string
+		}
+	) {
+		const shaderKey = options.shaderKey ?? options.fragmentShader;
+		let shader = shaderPassMaterialCache[shaderKey];
+		if (!shader) {
+			shader = new ShaderMaterial({
+				fragmentShader: options.fragmentShader,
+				vertexShader: /*glsl*/`
+					varying vec2 vUv;
+					void main() {
+						vUv = uv;
+						gl_Position = vec4(position, 1.0);
+					}
+				`,
+				uniforms: options.uniforms ?? {},
+			});
+			shaderPassMaterialCache[shaderKey] = shader;
+		}
+
+		return Rendering.shaderMaterialPass(renderer, {
+			...options,
+			shader,
 		});
 	}
 
@@ -320,13 +351,13 @@ export namespace Rendering {
 			shader = rawCopyMaterial;
 		}
 		
-		shaderPass(renderer, {
+		shaderMaterialPass(renderer, {
 			shader,
 			target: options.target,
 			targetMipmapLevel: options.targetMipmapLevel,
 			targetCubeFace: options.targetCubeFace,
 			viewport: options.viewport,
-			toneMapping: options.toneMapping,
+			toneMapping: options.toneMapping ?? NoToneMapping,
 			toneMappingExposure: options.toneMappingExposure,
 			restoreGlobalState: options.restoreGlobalState,
 			clearColor: options.clear != null ? {rgb: 0x00000, alpha: 0} : false,

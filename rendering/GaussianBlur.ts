@@ -33,7 +33,7 @@ export function gaussianBlur(
 	
 	let blurredMaskX = renderTargetStore.getRenderTarget(`${cacheId}_blur2D_x`, textureWidth, textureHeight, textureOptions);
 
-	Rendering.shaderPass(renderer, {
+	Rendering.shaderMaterialPass(renderer, {
 		target: blurredMaskX,
 		restoreGlobalState: true,
 		shader: blurX,
@@ -43,7 +43,7 @@ export function gaussianBlur(
 
 	let blurY = Blur1D.get(ctx, kernel, truncationSigma, 0, 1, blurredMaskX.texture, textureWidth, textureHeight);
 
-	Rendering.shaderPass(renderer, {
+	Rendering.shaderMaterialPass(renderer, {
 		target: result,
 		restoreGlobalState: true,
 		shader: blurY,

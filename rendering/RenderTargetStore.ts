@@ -50,7 +50,7 @@ export default class RenderTargetStore {
 		colorSpace: NoColorSpace,
 	}
 
-	_renderTargets: { [key: string]: RenderTarget } = {};
+	protected renderTargets: { [key: string]: RenderTarget } = {};
 
 	getRenderTarget(
 		key: string,
@@ -59,7 +59,7 @@ export default class RenderTargetStore {
 		options?: RenderTargetStoreOptions,
 		onCreateOrResize?: (target: RenderTarget, event: 'create' | 'resize') => void,
 	) {
-		let target = this._renderTargets[key];
+		let target = this.renderTargets[key];
 
 		// determine texture size
 		let textureWidth = 0;
@@ -106,7 +106,7 @@ export default class RenderTargetStore {
 			target.texture.width = target.width;
 			target.texture.height = target.height;
 			target.name = key;
-			this._renderTargets[key] = target;
+			this.renderTargets[key] = target;
 
 			if (options?.allocateMipmaps) {
 				initMipmapArray(target);
@@ -148,11 +148,11 @@ export default class RenderTargetStore {
 	}
 
 	clearAndDispose() {
-		for (let name in this._renderTargets) {
-			let target = this._renderTargets[name];
+		for (let name in this.renderTargets) {
+			let target = this.renderTargets[name];
 			target.dispose();
 		}
-		this._renderTargets = {};
+		this.renderTargets = {};
 	}
 
 	static getStoreForRenderTarget(target: WebGLRenderTarget) {
