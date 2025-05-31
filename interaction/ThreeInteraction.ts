@@ -233,6 +233,10 @@ export default class ThreeInteraction {
         return visible
     }
 
+    static makeInteractive<T extends Object3D>(object: T, settings: InteractionSettings): T & InteractiveObject {
+        return makeInteractive(object, settings);
+    }
+
 }
 
 export type InteractionSettings = {
