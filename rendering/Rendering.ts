@@ -289,6 +289,7 @@ export namespace Rendering {
 						gl_Position = vec4(position, 1.0);
 					}
 				`,
+				precision: 'highp',
 				uniforms: {},
 			});
 			for (let key in options.uniforms ?? {}) {
