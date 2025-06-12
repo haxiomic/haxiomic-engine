@@ -151,6 +151,7 @@ export class DevUI {
 	static addMaterial(material: Material, name: string) {
 		let materialFolder = DevUI.addFolder(name);
 
+		if ('visible' in material) materialFolder.add(material, 'visible');
 		if ('color' in material) materialFolder.addColor(material, 'color');
 		if ('flatShading' in material) materialFolder.add(material, 'flatShading');
 		if ('depthWrite' in material) materialFolder.add(material, 'depthWrite');
