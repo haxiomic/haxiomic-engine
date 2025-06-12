@@ -1,4 +1,4 @@
-import { Camera, Intersection, Object3D, Ray, Raycaster, Scene, Vector2 } from "three"
+import { Camera, Intersection, Object3D, Object3DEventMap, Ray, Raycaster, Scene, Vector2 } from "three"
 import { EventEmitter } from "../EventEmitter.js";
 import InteractionManager from "./InteractionManager.js";
 import { Layer } from "../Layer.js";
@@ -226,7 +226,7 @@ export class ThreeInteraction {
         let includedObjects: Array<Intersection<Object3D>> = []
         for (let intersection of intersections) {
             // skip object if not visible
-            if (intersection.object.interaction?.interactiveWhenInvisible !== true) {
+            if ((intersection.object as InteractiveObject3D).interaction?.interactiveWhenInvisible !== true) {
                 if (!this.isVisible(intersection.object)) continue;
             }
 
@@ -234,8 +234,8 @@ export class ThreeInteraction {
         }
         // allow objects to override sorting
         includedObjects.sort((a, b) => {
-            let aSortPriority = a.object.interaction?.sortPriority ?? 0;
-            let bSortPriority = b.object.interaction?.sortPriority ?? 0;
+            let aSortPriority = (a.object as InteractiveObject3D).interaction?.sortPriority ?? 0;
+            let bSortPriority = (b.object as InteractiveObject3D).interaction?.sortPriority ?? 0;
             if (aSortPriority !== bSortPriority) {
                 return bSortPriority - aSortPriority;
             } else {
@@ -245,7 +245,7 @@ export class ThreeInteraction {
 
         // now we've sorted, remove objects occluded by the first `occludePointerEvents` object
         for (let i = 0; i < includedObjects.length; i++) {
-            let object = includedObjects[i].object;
+            let object = includedObjects[i].object as InteractiveObject3D;
             if (object.interaction?.occludePointerEvents === true) {
                 // remove all objects after this one
                 includedObjects.splice(i + 1)
@@ -352,18 +352,6 @@ export type InteractionFields = {
 
 export type InteractiveObject3D<T extends Object3D = Object3D> = T & {
     interaction: InteractionFields
-}
-
-// extends Object3D to inclue interaction fields
-declare module 'three' {
-    interface Object3D {
-        /**
-         * Pointer interaction fields for this object.
-         * 
-         * See ThreeInteraction.makeInteractive to enable
-         */
-        interaction?: InteractionFields
-    }
 }
 
 export function makeInteractive<T extends Object3D>(object: T, settings: Omit<InteractionFields, 'events'>): InteractiveObject3D<T> {

@@ -43,6 +43,7 @@ GUI.prototype.add = function<Obj extends object, PropertyName extends keyof Obj 
 	}
 
 	// find existing controller
+	/*
 	let existingController = this.hashedControllers.get(hash);
 	if (existingController != null) {
 		// update controller with $1, max, step
@@ -66,6 +67,7 @@ GUI.prototype.add = function<Obj extends object, PropertyName extends keyof Obj 
 		existingController.updateDisplay();
 		return existingController;
 	}
+	*/
 
 	let controller = GUIAdd.apply(this, arguments as any);
 	if (name != null) {
