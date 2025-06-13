@@ -503,7 +503,7 @@ export class PhysicallyBasedViewer<
 
 	private _lastRenderTime_ms: number = NaN;
 
-	render(renderTarget: WebGLRenderTarget | null = null, camera: Camera = this.camera) {
+	render(renderTarget: WebGLRenderTarget | null = null, camera: Camera = this.camera, renderLayers: Layers = this.renderLayers) {
 		let { renderer, scene } = this;
 		let renderTime_ms = performance.now();
 		let dt_ms = isNaN(this._lastRenderTime_ms) ? 16 : (renderTime_ms - this._lastRenderTime_ms);
@@ -564,7 +564,7 @@ export class PhysicallyBasedViewer<
 			this.renderer.setClearColor(this.clearColor.rgb, this.clearColor.alpha);
 			this.renderer.autoClearDepth = true;
 			this.renderer.autoClearStencil = true;
-			this.camera.layers.mask = this.renderLayers.mask;
+			this.camera.layers.mask = renderLayers.mask;
 
 			if (this.effectComposer.renderTarget1.width !== targetWidth || this.effectComposer.renderTarget1.height !== targetHeight) {
 				this.effectComposer.setSize(targetWidth, targetHeight);
@@ -574,7 +574,7 @@ export class PhysicallyBasedViewer<
 		} else {
 			this.renderPass(camera, {
 				target: renderTarget,
-				layers: this.renderLayers,
+				layers: renderLayers,
 				clearColor: this.clearColor,
 				clearDepth: true,
 				clearStencil: true,

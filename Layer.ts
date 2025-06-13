@@ -8,6 +8,7 @@ export enum Layer {
 	WorldPosition,
 	UVPosition,
 	ScreenSpaceReflector,
-	
+	Transmissive,
+
 	_LAST_,
 }

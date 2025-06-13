@@ -139,6 +139,15 @@ export class CustomPhysicalMaterial<UserUniforms extends { [uniform: string]: IU
 	public specularIntensityMap : Texture | null | undefined;
 	public specularColorMap : Texture | null | undefined;
 
+	protected _dispersion: number = 0;
+	public get dispersion() {
+		return this._dispersion;
+	}
+	public set dispersion(v: number) {
+		if ((this._dispersion > 0) != (v > 0)) this.version++;
+		this._dispersion = v;
+	}
+
 	// public readonly isMaterial: boolean;
 	public readonly isMeshPhysicalMaterial: boolean;
 	public readonly isInitialized: boolean;
@@ -223,7 +232,7 @@ export class CustomPhysicalMaterial<UserUniforms extends { [uniform: string]: IU
 
 		this.thickness = 0.01;
 		this.thicknessMap = null;
-		this.attenuationDistance = 0.0;
+		this.attenuationDistance = Infinity;
 		this.attenuationColor = new Color( 1, 1, 1 );
 
 		this.specularIntensity = 1.0;

@@ -197,6 +197,7 @@ export class DevUI {
 			if ('thickness' in material) materialFolder.add(material, 'thickness', 0, 10);
 			if ('attenuationColor' in material) materialFolder.addColor(material, 'attenuationColor');
 			if ('attenuationDistance' in material) materialFolder.add(material, 'attenuationDistance', 0, 10);
+			if ('dispersion' in material) materialFolder.add(material, 'dispersion', 0, 5);
 		}
 
 		if ('clearcoat' in material) {
