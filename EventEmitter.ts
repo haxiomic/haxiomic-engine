@@ -101,7 +101,10 @@ export class EventEmitter<Payload = undefined, E = EventEmitter.Emitted<Payload>
     }
 
     private sortPriorityDescending() {
-        this.listeners.sort((a, b) => b.priority - a.priority)
+        function sort(a: { priority: number }, b: { priority: number }) {
+            return b.priority - a.priority;
+        }
+        this.listeners.sort(sort);
     }
 
     private patchPayload(payload: Payload): E {
