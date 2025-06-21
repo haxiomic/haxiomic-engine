@@ -1,5 +1,5 @@
-import { Animator } from "./animation/Animator.js";
-import { Spring } from "./animation/Spring.js";
+import { Animator } from "physics-animator";
+import { Spring } from "physics-animator/animators";
 
 export type PerformanceMonitorOptions = {
     smoothingHalfLife_s?: number;
@@ -31,7 +31,7 @@ export class PerformanceMonitor {
     // leave this many seconds before calling the callback again to give time for changes to take effect
     callbackWaitTime_s: number;
 
-    protected smoothingParameters: Spring.Parameters;
+    protected smoothingParameters: Spring.PhysicsParameters;
     protected lastCallbackTime_ms: number = NaN;
     protected lowFPSRepeatCount: number = 0;
     protected highFPSRepeatCount: number = 0;
@@ -41,12 +41,12 @@ export class PerformanceMonitor {
         this.fpsLowLimit = options.fpsLowLimit;
         this.fpsHighLimit = options.fpsHighLimit;
         this.callbackWaitTime_s = options.callbackWaitTime_s;
-        this.smoothingParameters = Spring.Exponential(options.smoothingHalfLife_s);
+        this.smoothingParameters = Spring.Exponential({ halfLife_s: options.smoothingHalfLife_s });
 
         // we don't want to call the callback immediately so we use this callbackWaitTime_s as warmup time
         this.lastCallbackTime_ms = performance.now();
 
-        this.animator.onAfterStep.addListener(() => {
+        this.animator.onAfterStep(() => {
             let t_ms = performance.now();
 
             // NaN or number
@@ -72,13 +72,13 @@ export class PerformanceMonitor {
     _lastTickTime_ms: number = NaN;
     tick(fps?: number) {
         if (fps !== undefined) {
-            this.animator.springTo(this, 'smoothedFPS', fps, this.smoothingParameters);
+            this.animator.springTo(this, { smoothedFPS: fps } as Partial<this>, this.smoothingParameters);
         } else {
             const t_ms = performance.now();
             if (!isNaN(this._lastTickTime_ms)) {
                 const dt_ms = t_ms - this._lastTickTime_ms;
                 const fps = 1000 / dt_ms;
-                this.animator.springTo(this, 'smoothedFPS', fps, this.smoothingParameters);
+                this.animator.springTo(this, { smoothedFPS: fps } as Partial<this>, this.smoothingParameters);
             }
             this._lastTickTime_ms = t_ms;
         }

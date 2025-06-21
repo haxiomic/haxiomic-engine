@@ -1,4 +1,4 @@
-import { Animator } from "../animation/Animator.js";
+import { Animator } from "physics-animator";
 import { useInitializer } from "./useInitializer.js";
 
 /**

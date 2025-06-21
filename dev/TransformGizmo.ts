@@ -1,11 +1,11 @@
 import { BackSide, BufferGeometry, Camera, Color, ColorRepresentation, ConeGeometry, CylinderGeometry, Matrix4, Mesh, MeshBasicMaterial, Object3D, Plane, Quaternion, Ray, Raycaster, Scene, TorusGeometry, Vector3, Vector4, WebGLRenderer } from "three";
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EventEmitter } from "../EventEmitter.js";
-import { Animator } from "../animation/Animator.js";
-import { Spring } from "../animation/Spring.js";
 import { makeInteractive } from "../interaction/ThreeInteraction.js";
+import { Animator } from "physics-animator";
+import { Spring } from "physics-animator/animators";
 
-const springStyle = Spring.Exponential(0.05)
+const springStyle = Spring.Exponential({ halfLife_s: 0.05 });
 export type TransformName = 'translateX' | 'translateY' | 'translateZ' | 'rotateX' | 'rotateY' | 'rotateZ' | 'scaleX' | 'scaleY' | 'scaleZ'
 
 export enum TransformKind {
@@ -416,7 +416,8 @@ class TransformGizmoComponent extends Mesh<BufferGeometry, MeshBasicMaterial> {
 	selectionLerp = 0;
 	onBeforeRender = (renderer: WebGLRenderer, scene: Scene, camera: Camera) => {
 		let u = this.hovered || this.selected ? 1 : 0;
-		this.animator.springTo(this, 'selectionLerp', u, springStyle);
+
+		this.animator.springTo<TransformGizmoComponent>(this, { 'selectionLerp': u }, springStyle);
 
 		this.animator.tick();
 		this.material.color.lerpColors(this.baseColor, this.hoverColor, this.selectionLerp);
