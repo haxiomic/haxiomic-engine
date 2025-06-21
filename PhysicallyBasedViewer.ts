@@ -72,21 +72,18 @@ export class PhysicallyBasedViewer<
 	pixelRatio = window.devicePixelRatio;
 
 	readonly events = {
-		beforeUpdate: new EventEmitter<{
+		/** Dispatched once *per animation frame* to update world state */
+		frameUpdate: new EventEmitter<{
 			t_s: number,
 			dt_s: number,
 			camera: Camera,
 			scene: Scene,
 		}>(),
-		beforeRender: new EventEmitter<{
+		/** Dispatched once *per animation frame* */
+		beforeFrameRender: new EventEmitter<{
 			renderer: WebGLRenderer,
 			t_s: number,
 			dt_s: number,
-			camera: Camera,
-			scene: Scene,
-		}>(),
-		beforeRenderPass: new EventEmitter<{
-			renderer: WebGLRenderer,
 			camera: Camera,
 			scene: Scene,
 		}>(),
@@ -297,7 +294,7 @@ export class PhysicallyBasedViewer<
 
 			// restore camera before the first frame
 			// this let's the user safely set the camera after new PhysicallyBasedViewer()
-			this.events.beforeRender.once(() => {
+			this.events.beforeFrameRender.once(() => {
 				let cameraPosition = localStorage.getItem(cameraPositionKey);
 				let cameraRotation = localStorage.getItem(cameraRotationKey);
 				let controlsPosition = localStorage.getItem(controlsPositionKey);
@@ -333,7 +330,7 @@ export class PhysicallyBasedViewer<
 			}
 			let _lastSaveTimestamp_s = NaN;
 			let cacheInterval_s = 0.1;
-			this.events.beforeRender.on(({ camera, t_s }) => {
+			this.events.beforeFrameRender.on(({ camera, t_s }) => {
 				if (!cameraRestored) return;
 				let timeSinceLastSave_s = t_s - _lastSaveTimestamp_s;
 				let needsSave = timeSinceLastSave_s > cacheInterval_s || isNaN(_lastSaveTimestamp_s);
@@ -498,12 +495,12 @@ export class PhysicallyBasedViewer<
 			});
 		}
 
-		renderer.setAnimationLoop((time, frame) => this.render());
+		renderer.setAnimationLoop((time, frame) => this.animationFrame());
 	}
 
 	private _lastRenderTime_ms: number = NaN;
 
-	render(renderTarget: WebGLRenderTarget | null = null, camera: Camera = this.camera, renderLayers: Layers = this.renderLayers) {
+	animationFrame(renderTarget: WebGLRenderTarget | null = null, camera: Camera = this.camera, renderLayers: Layers = this.renderLayers) {
 		let { renderer, scene } = this;
 		let renderTime_ms = performance.now();
 		let dt_ms = isNaN(this._lastRenderTime_ms) ? 16 : (renderTime_ms - this._lastRenderTime_ms);
@@ -536,7 +533,7 @@ export class PhysicallyBasedViewer<
 			}
 		}
 
-		this.events.beforeUpdate.dispatch({
+		this.events.frameUpdate.dispatch({
 			t_s: renderTime_ms / 1000,
 			dt_s,
 			camera,
@@ -548,7 +545,7 @@ export class PhysicallyBasedViewer<
 			this.controls.update?.(dt_s)
 		}
 
-		this.events.beforeRender.dispatch({
+		this.events.beforeFrameRender.dispatch({
 			renderer,
 			t_s: renderTime_ms / 1000,
 			dt_s,
@@ -572,25 +569,38 @@ export class PhysicallyBasedViewer<
 			this.renderer.setViewport(0, 0, targetWidth, targetHeight);
 			this.effectComposer.render(dt_s);
 		} else {
-			this.renderPass(camera, {
-				target: renderTarget,
-				layers: renderLayers,
-				clearColor: this.clearColor,
-				clearDepth: true,
-				clearStencil: true,
-				toneMapping: this.toneMapping,
-				toneMappingExposure: this.toneMappingExposure,
-				restoreGlobalState: true,
-			});
+			if (this.customRender) {
+				this.customRender({
+					camera,
+					scene,
+					target: renderTarget,
+					layers: renderLayers,
+					clearColor: this.clearColor,
+					clearDepth: true,
+					clearStencil: true,
+					toneMapping: this.toneMapping,
+					toneMappingExposure: this.toneMappingExposure,
+					restoreGlobalState: true,
+				});
+			} else {
+				this.render(camera, {
+					target: renderTarget,
+					layers: renderLayers,
+					clearColor: this.clearColor,
+					clearDepth: true,
+					clearStencil: true,
+					toneMapping: this.toneMapping,
+					toneMappingExposure: this.toneMappingExposure,
+					restoreGlobalState: true,
+				});
+			}
+
 		}
 	}
 
-	renderPass(camera: Camera, renderPassOptions: Omit<Rendering.RenderPassOptions, 'scene' | 'camera'>) {
-		this.events.beforeRenderPass.dispatch({
-			renderer: this.renderer,
-			scene: this.scene,
-			camera: camera,
-		});
+	customRender: undefined | ((renderPassOptions: Rendering.RenderPassOptions) => void) = undefined;
+
+	render(camera: Camera, renderPassOptions: Omit<Rendering.RenderPassOptions, 'scene' | 'camera'>) {
 		Rendering.renderPass(this.renderer, {
 			scene: this.scene,
 			camera,
