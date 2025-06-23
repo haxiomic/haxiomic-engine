@@ -159,6 +159,13 @@ export class DevUI {
 		if ('depthWrite' in material) materialFolder.add(material, 'depthWrite');
 		if ('depthTest' in material) materialFolder.add(material, 'depthTest');
 		if ('transparent' in material) materialFolder.add(material, 'transparent');
+		if ('side' in material) {
+			materialFolder.add(material, 'side', {
+				FrontSide: 0,
+				BackSide: 1,
+				DoubleSide: 2,
+			});
+		}
 		if ('blending' in material) {
 			materialFolder.add(material, 'blending', {
 				NoBlending,
