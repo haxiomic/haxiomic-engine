@@ -88,6 +88,7 @@ export class PhysicallyBasedViewer<
 			scene: Scene,
 		}>(),
 		dispose: new EventEmitter<void>(),
+		canvasResized: new EventEmitter<{ width: number, height: number }>(),
 		environmentChanged: new EventEmitter<{ scene: Scene, environment: Texture | null }>(),
 	}
 
@@ -516,12 +517,7 @@ export class PhysicallyBasedViewer<
 		let targetWidth = Math.floor(canvas.clientWidth * this.pixelRatio);
 		let targetHeight = Math.floor(canvas.clientHeight * this.pixelRatio);
 
-		if ((canvas.width !== targetWidth) || (canvas.height !== targetHeight)) {
-			// canvas.width = targetWidth;
-			// canvas.height = targetHeight;
-			renderer.setSize(targetWidth, targetHeight, false);
-		}
-
+		// update camera aspect ratio (must happen before canvasResized event)
 		let aspect = targetWidth / targetHeight;
 		if (isPerspectiveCamera(camera) && camera.aspect != aspect) {
 			camera.aspect = aspect;
@@ -531,6 +527,13 @@ export class PhysicallyBasedViewer<
 				cam.aspect = aspect;
 				cam.updateProjectionMatrix();
 			}
+		}
+
+		if ((canvas.width !== targetWidth) || (canvas.height !== targetHeight)) {
+			// canvas.width = targetWidth;
+			// canvas.height = targetHeight;
+			renderer.setSize(targetWidth, targetHeight, false);
+			this.events.canvasResized.dispatch({ width: targetWidth, height: targetHeight });
 		}
 
 		this.events.frameUpdate.dispatch({
