@@ -78,12 +78,16 @@ export class EventEmitter<Payload = undefined, E = EventEmitter.Emitted<Payload>
 
         // sort listeners by priority before dispatch (priority can change at runtime)
         this.sortPriorityDescending()
+
+        // clone listeners to avoid issues with removing listeners while iterating
+        let listeners = this.listeners.slice(0);
+
         // enumerate listeners, highest priority first
-        for (let i = 0; i < this.listeners.length; i++) {
-            let item = this.listeners[i]
+        for (let i = 0; i < listeners.length; i++) {
+            let item = listeners[i]
             if (item.priority > maxPriority) continue; // skip
 
-            this.listeners[i].listener(event as any)
+            listeners[i].listener(event as any)
 
             // stop propagation if event was prevented
             if (typeof event === 'object' && (event as any).propagationStopped) {

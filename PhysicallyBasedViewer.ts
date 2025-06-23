@@ -641,6 +641,7 @@ export class PhysicallyBasedViewer<
 
 					this.fallbackAmbientLight.removeFromParent();
 					texture.dispose()
+
 					this.events.environmentChanged.dispatch({ environment, scene: this.scene });
 					resolve(environment);
 				},
