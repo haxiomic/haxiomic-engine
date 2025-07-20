@@ -8,6 +8,8 @@ export type PerformanceMonitorOptions = {
     callbackWaitTime_s?: number;
     onLowFPS?: (repeatCount: number) => void;
     onHighFPS?: (repeatCount: number) => void;
+    /** by default we use animationFrame to determine fps. Set this to `false` and call tick() manually for a different approach */
+    manualTick?: boolean; // if true, you need to call tick() manually
 };
 
 const defaultPerformanceMonitorOptions = {
@@ -17,6 +19,7 @@ const defaultPerformanceMonitorOptions = {
     callbackWaitTime_s: 4,
     onLowFPS: () => {},
     onHighFPS: () => {},
+    manualTick: false, // default to automatic ticking
 };
 
 export class PerformanceMonitor {
@@ -35,6 +38,7 @@ export class PerformanceMonitor {
     protected lastCallbackTime_ms: number = NaN;
     protected lowFPSRepeatCount: number = 0;
     protected highFPSRepeatCount: number = 0;
+    protected manualTick: boolean;
 
     constructor(inputOptions: PerformanceMonitorOptions = defaultPerformanceMonitorOptions) {
         const options = { ...defaultPerformanceMonitorOptions, ...inputOptions };
@@ -67,9 +71,16 @@ export class PerformanceMonitor {
                 }
             }
         });
+
+        this.manualTick = options.manualTick;
+
+        if (!this.manualTick) {
+            this.animator.startAnimationFrameLoop();
+            this.animator.onBeforeStep(() => this.tick())
+        }
     }
 
-    _lastTickTime_ms: number = NaN;
+    private _lastTickTime_ms: number = NaN;
     tick(fps?: number) {
         if (fps !== undefined) {
             this.animator.springTo(this, { smoothedFPS: fps } as Partial<this>, this.smoothingParameters);
@@ -83,7 +94,10 @@ export class PerformanceMonitor {
             this._lastTickTime_ms = t_ms;
         }
 
-        this.animator.tick();
+        // if we're externally ticking, we need to call the animator's tick method
+        if (this.manualTick) {
+            this.animator.tick();
+        }
     }
 
 }
