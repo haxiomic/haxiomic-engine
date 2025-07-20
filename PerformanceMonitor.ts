@@ -72,6 +72,12 @@ export class PerformanceMonitor {
             }
         });
 
+        // requestAnimationFrame will not fire when the window is not focused, so we reset the last tick time
+        window.addEventListener('focus', () => {
+            this._lastTickTime_ms = NaN;
+            this.lastCallbackTime_ms = performance.now();
+        });
+
         this.manualTick = options.manualTick;
 
         if (!this.manualTick) {
