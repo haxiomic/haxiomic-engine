@@ -1,5 +1,5 @@
 import { AdditiveBlending, CustomBlending, Material, MultiplyBlending, NoBlending, NormalBlending, SubtractiveBlending } from 'three';
-import { GUI, Controller } from '../lib/lilgui.module.js';
+import { GUI, type Controller } from '../lib/lilgui.module.js';
 
 
 // add hashController to GUI types
@@ -111,23 +111,37 @@ GUI.prototype.updateDisplay = function() {
 // Wrap in getter/setter so it's only created when used
 export class DevUI {
 
+	static disabled = false;
+
 	private static _ui: GUI | null = null;
 	static get ui() {
 		DevUI._ui = DevUI._ui ?? this.initUI();
 		return DevUI._ui;
 	}
+
+	private static onKeyDown = (e: KeyboardEvent) => {
+		let isTextInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement).isContentEditable;
+
+		const gui = DevUI.ui;
+
+		if (!isTextInput && e.code == 'KeyH') {
+			gui.show(gui._hidden);
+		}
+	}
 	
 	private static initUI(): GUI {
 		let gui = new GUI();
 		// use 'h' key to toggle GUI
-		window.addEventListener('keydown', e => {
-			let isTextInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement).isContentEditable;
-
-			if (!isTextInput && e.code == 'KeyH') {
-				gui.show(gui._hidden);
-			}
-		});
+		window.addEventListener('keydown', DevUI.onKeyDown, { passive: true });
 		return gui;
+	}
+
+	static dispose() {
+		if (DevUI._ui != null) {
+			DevUI._ui.destroy();
+			DevUI._ui = null;
+		}
+		window.removeEventListener('keydown', DevUI.onKeyDown);
 	}
 
 	// forward methods
@@ -139,18 +153,40 @@ export class DevUI {
 		step?: number,
 		name?: string
 	) {
+		if (DevUI.disabled) {
+			const fakeController = {
+				set: () => fakeController,
+				get: () => $1,
+				onChange: () => fakeController,
+				onFinishChange: () => fakeController,
+				name: () => fakeController,
+				min: () => fakeController,
+				max: () => fakeController,
+				step: () => fakeController,
+			}
+			return fakeController;
+		}
 		return DevUI.ui.add(object, property, $1, max, step, name);
 	}
 
 	static addFolder(name: string) {
+		if (DevUI.disabled) {
+			return this;
+		}
 		return DevUI.ui.addFolder(name);
 	}
 
 	static addColor(object: object, property: string) {
+		if (DevUI.disabled) {
+			return this;
+		}
 		return DevUI.ui.addColor(object, property);
 	}
 
 	static addMaterial(material: Material, name: string) {
+		if (DevUI.disabled) {
+			return this;
+		}
 		let materialFolder = DevUI.addFolder(name);
 
 		if ('visible' in material) materialFolder.add(material, 'visible');
@@ -231,7 +267,26 @@ export class DevUI {
 	}
 
 	static updateDisplay() {
+		if (DevUI.disabled) {
+			return;
+		}
 		DevUI.ui.updateDisplay();
+	}
+
+	static onChange(callback: () => void) {
+		if (DevUI.disabled) {
+			return this;
+		}
+		DevUI.ui.onChange(callback);
+		return this;
+	}
+
+	static close() {
+		if (DevUI.disabled) {
+			return this;
+		}
+		DevUI.ui.close();
+		return this;
 	}
 
 }
