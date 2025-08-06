@@ -209,6 +209,10 @@ export class PhysicallyBasedViewer<
 			orbitControls.addEventListener('end', () => {
 				canvas.style.cursor = 'grab';
 			});
+			this.events.dispose.once(() => {
+				orbitControls.dispose();
+			});
+
 			this.controls = orbitControls as any;
 		} else {
 			this.controls = typeof options.controls === 'function' ? options.controls(this.camera, interactionManager) : options.controls;
@@ -399,6 +403,11 @@ export class PhysicallyBasedViewer<
 				stats: new Stats(),
 			}
 			document.body.appendChild(this.dev.stats.dom);
+			this.events.dispose.once(() => {
+				if (this.dev?.stats.dom) {
+					this.dev.stats.dom.remove();
+				}
+			});
 
 			let devRoot = this.dev.root;
 			this.scene.add(devRoot);
@@ -618,6 +627,7 @@ export class PhysicallyBasedViewer<
 		this.threeInteraction.dispose();
 		this.events.dispose.dispatch();
 		this.renderTargetStore.clearAndDispose();
+		this.renderer.forceContextLoss();
 		this.renderer.dispose();
 	}
 
