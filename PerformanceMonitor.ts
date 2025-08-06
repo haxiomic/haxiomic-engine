@@ -1,5 +1,6 @@
 import { Animator } from "physics-animator";
 import { Spring } from "physics-animator/animators";
+import { EventEmitter } from "./EventEmitter.js";
 
 export type PerformanceMonitorOptions = {
     smoothingHalfLife_s?: number;
@@ -33,6 +34,10 @@ export class PerformanceMonitor {
 
     // leave this many seconds before calling the callback again to give time for changes to take effect
     callbackWaitTime_s: number;
+
+    events = {
+        dispose: new EventEmitter<void>(),
+    }
 
     protected smoothingParameters: Spring.PhysicsParameters;
     protected lastCallbackTime_ms: number = NaN;
@@ -73,10 +78,11 @@ export class PerformanceMonitor {
         });
 
         // requestAnimationFrame will not fire when the window is not focused, so we reset the last tick time
-        window.addEventListener('focus', () => {
+        const onFocus = () => {
             this._lastTickTime_ms = NaN;
             this.lastCallbackTime_ms = performance.now();
-        });
+        }
+        window.addEventListener('focus', onFocus);
 
         this.manualTick = options.manualTick;
 
@@ -84,6 +90,17 @@ export class PerformanceMonitor {
             this.animator.startAnimationFrameLoop();
             this.animator.onBeforeStep(() => this.tick())
         }
+
+        // clean up
+        this.events.dispose.once(() => {
+            this.animator.stop();
+            this.animator.removeAll();
+            window.removeEventListener('focus', onFocus);
+        });
+    }
+
+    dispose() {
+        this.events.dispose.dispatch();
     }
 
     private _lastTickTime_ms: number = NaN;
