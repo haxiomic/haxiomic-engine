@@ -15,7 +15,7 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "physics-animator": "^0.14.0",
+    "physics-animator": "^0.15.1",
     "@types/node": "^22.10.2",
     "@types/express": "^5.0.0",
     "@types/react": "^19.0.12",
