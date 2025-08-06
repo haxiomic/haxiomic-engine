@@ -321,10 +321,8 @@ export namespace Rendering {
 	}
 
 	const rawCopyMaterials: { [swizzle: string]: RawCopyMaterial } = {
-		'': new RawCopyMaterial(),
 	}
 	const copyMaterials: { [swizzle: string]: CopyMaterial } = {
-		'': new CopyMaterial(),
 	}
 	/**
 	 * Copy texture to target using fragment shader pass
@@ -400,6 +398,33 @@ export namespace Rendering {
 		let webglTexture = (renderer.properties.get(texture) as any).__webglTexture;
 		renderer.state.bindTexture(gl.TEXTURE_2D, webglTexture);
 		gl.generateMipmap(gl.TEXTURE_2D);
+	}
+
+	/**
+	 * Clear GPU-bound resources
+	 */
+	export function dispose() {
+		for (let key in shaderPassMaterialCache) {
+			shaderPassMaterialCache[key].dispose();
+			delete shaderPassMaterialCache[key];
+		}
+		for (let key in rawCopyMaterials) {
+			rawCopyMaterials[key].dispose();
+			delete rawCopyMaterials[key];
+		}
+		_renderPassSnapshot.renderTarget = null;
+		_renderPassSnapshot.activeMipmapLevel = 0;
+		_renderPassSnapshot.activeCubeFace = 0;
+		_renderPassSnapshot.clearColor.rgb.set(0, 0, 0);
+		_renderPassSnapshot.clearColor.alpha = 0;
+		_renderPassSnapshot.viewport.set(0, 0, 0, 0);
+
+		_tempGlobalState.renderTarget = null;
+		_tempGlobalState.activeMipmapLevel = 0;
+		_tempGlobalState.activeCubeFace = 0;
+		_tempGlobalState.clearColor.rgb.set(0, 0, 0);
+		_tempGlobalState.clearColor.alpha = 0;
+		_tempGlobalState.viewport.set(0, 0, 0, 0);
 	}
 
 }
