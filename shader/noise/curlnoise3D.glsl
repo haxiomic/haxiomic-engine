@@ -113,5 +113,5 @@ vec3 curlNoise(vec3 p){
     float y=p_z1.x-p_z0.x-p_x1.z+p_x0.z;
     float z=p_x1.y-p_x0.y-p_y1.x+p_y0.x;
     
-    return normalize(vec3(x,y,.5));
+    return normalize(vec3(x,y,z));
 }
