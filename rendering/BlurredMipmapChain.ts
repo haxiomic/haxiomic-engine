@@ -3,7 +3,7 @@ import { RGBASwizzle, Swizzle } from "../materials/Swizzle.js";
 import { mipmapCount } from "../math/Math.js";
 import { Rendering } from "./Rendering.js";
 import RenderTargetStore from "./RenderTargetStore.js";
-import { LinearFilter, LinearMipmapNearestFilter, WebGLRenderer, WebGLRenderTarget } from "three";
+import { LinearFilter, LinearMipmapNearestFilter, PixelFormat, WebGLRenderer, WebGLRenderTarget } from "three";
 
 export function generateBlurredMipmaps(
     renderer: WebGLRenderer, 
@@ -36,7 +36,7 @@ export function generateBlurredMipmaps(
             magFilter: LinearFilter,
             minFilter: LinearMipmapNearestFilter,
             type: target.texture.type,
-            format: target.texture.format,
+            format: target.texture.format as PixelFormat,
             wrapS: target.texture.wrapS,
             wrapT: target.texture.wrapT,
             allocateMipmaps: true,

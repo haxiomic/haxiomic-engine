@@ -1,5 +1,5 @@
 import { nearestPowerOfTwo } from "../math/Math.js";
-import { AnyPixelFormat, ClampToEdgeWrapping, DepthTexture, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderer, WebGLRenderTarget, Wrapping } from 'three';
+import { AnyPixelFormat, ClampToEdgeWrapping, ColorSpace, DepthTexture, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, PixelFormat, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderer, WebGLRenderTarget, Wrapping } from 'three';
 
 export enum PowerOfTwoMode {
 	None,
@@ -26,8 +26,8 @@ export type RenderTargetStoreOptions = {
 	msaaSamples?: number,
 	wrapS?: Wrapping,
 	wrapT?: Wrapping,
-	format?: AnyPixelFormat,
-	colorSpace?: string,
+	format?: PixelFormat,
+	colorSpace?: ColorSpace,
 	allocateMipmaps?: boolean,
 	anisotropy?: number,
 }
@@ -103,8 +103,8 @@ export default class RenderTargetStore {
 				wrapT: options?.wrapT ?? defaultOptions.wrapT,
 				samples: options?.msaaSamples ?? defaultOptions.msaaSamples,
 			}) as RenderTarget;
-			target.texture.width = target.width;
-			target.texture.height = target.height;
+			// target.texture.width = target.width;
+			// target.texture.height = target.height;
 			target.name = key;
 			this.renderTargets[key] = target;
 
@@ -134,8 +134,8 @@ export default class RenderTargetStore {
 				target.height != textureHeight
 			) {
 				target.setSize(textureWidth, textureHeight);
-				target.texture.width = target.width;
-				target.texture.height = target.height;
+				// target.texture.width = target.width;
+				// target.texture.height = target.height;
 
 				if (options?.allocateMipmaps) {
 					initMipmapArray(target);
@@ -188,7 +188,7 @@ export default class RenderTargetStore {
 			msaaSamples: target.samples,
 			wrapS: target.texture.wrapS,
 			wrapT: target.texture.wrapT,
-			format: target.texture.format,
+			format: target.texture.format as PixelFormat,
 			allocateMipmaps: target.texture.mipmaps != null,
 		}
 	}

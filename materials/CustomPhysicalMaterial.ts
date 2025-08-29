@@ -66,7 +66,7 @@ export class CustomPhysicalMaterial<UserUniforms extends { [uniform: string]: IU
 		return this._clearcoat;
 	}
 	public set clearcoat(v: number) {
-		if ((this._clearcoat > 0) != (v > 0)) this.version++;
+		if ((this._clearcoat > 0) != (v > 0)) (this.version as number)++;
 		this._clearcoat = v;
 	}
 
@@ -88,7 +88,7 @@ export class CustomPhysicalMaterial<UserUniforms extends { [uniform: string]: IU
 		return this._sheen;
 	}
 	public set sheen(v: number) {
-		if ((this._sheen > 0) != (v > 0)) this.version++;
+		if ((this._sheen > 0) != (v > 0)) (this.version as number)++;
 		this._sheen = v;
 	}
 
@@ -105,7 +105,7 @@ export class CustomPhysicalMaterial<UserUniforms extends { [uniform: string]: IU
 		return this._transmission;
 	}
 	public set transmission(v: number) {
-		if ((this._transmission > 0) != (v > 0)) this.version++;
+		if ((this._transmission > 0) != (v > 0)) (this.version as number)++;
 		this._transmission = v;
 	}
 
@@ -117,7 +117,7 @@ export class CustomPhysicalMaterial<UserUniforms extends { [uniform: string]: IU
 	}
 	public set iridescence( value ) {
 		if ( this._iridescence > 0 !== value > 0 ) {
-			this.version ++;
+			(this.version as number)++;
 		}
 		this._iridescence = value;
 	}
@@ -144,7 +144,7 @@ export class CustomPhysicalMaterial<UserUniforms extends { [uniform: string]: IU
 		return this._dispersion;
 	}
 	public set dispersion(v: number) {
-		if ((this._dispersion > 0) != (v > 0)) this.version++;
+		if ((this._dispersion > 0) != (v > 0)) (this.version as number)++;
 		this._dispersion = v;
 	}
 

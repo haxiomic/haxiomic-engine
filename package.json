@@ -24,10 +24,10 @@
   },
   "peerDependencies": {
     "physics-animator": "^0.14.0",
-    "@types/three": "^0.176.0",
+    "@types/three": "^0.179.0",
     "zod": "^3.24.2",
     "typescript": "^5.7.2",
-    "three": "^0.176.0",
+    "three": "^0.179.1",
     "esbuild": "^0.25.1"
   },
   "exports": {

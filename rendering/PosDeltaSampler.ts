@@ -1,4 +1,4 @@
-import { NearestFilter, NoColorSpace, RawShaderMaterial, Texture, Uniform, Vector2, WebGLRenderer } from "three";
+import { NearestFilter, NoColorSpace, PixelFormat, RawShaderMaterial, Texture, Uniform, Vector2, WebGLRenderer } from "three";
 import { DualRenderTarget } from "./DualRenderTarget.js";
 import { Switch } from "../Functional.js";
 import { Rendering } from "./Rendering.js";
@@ -45,7 +45,7 @@ export class PosDeltaSampler {
             stencilBuffer: false,
             depthBuffer: false,
             anisotropy: 0,
-            format: positionTexture.format,
+            format: positionTexture.format as PixelFormat,
             generateMipmaps: false,
         });
 
