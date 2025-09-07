@@ -1,38 +1,61 @@
-import { ClampToEdgeWrapping, DataTexture, Line, LinearFilter, MagnificationTextureFilter, NearestFilter, NoColorSpace, PixelFormat, RedFormat, RepeatWrapping, RGBAFormat, TextureDataType, Uniform, UnsignedByteType, UVMapping, Vector2, WebGLRenderer } from "three";
+import {
+    ClampToEdgeWrapping,
+    DataTexture,
+    LinearFilter,
+    MagnificationTextureFilter,
+    NoColorSpace,
+    PixelFormat,
+    RepeatWrapping,
+    TextureDataType,
+    TypedArray,
+    Uniform,
+    UVMapping,
+    WebGLRenderer
+} from "three";
+import { getChannelCount, getTypedArrayConstructor, normalizedToTextureValue, TextureDataTypeToArray, TextureDataTypeToConstructor } from "../TextureUtils.js";
+import { mod } from "../math/Math.js";
 
-export type RingBufferTextureOptions = {
+export type RingBufferTextureOptions<T extends TextureDataType = TextureDataType> = {
     rowWidth: number,
     /** aka history count / number of rows / texture height */
     rowCount: number,
-    format: PixelFormat, 
-    type: TextureDataType,
+    format: PixelFormat,
+    type: T,
     filtering?: MagnificationTextureFilter,
     data?: ArrayBufferView | null,
+    /** -1 means write upward; +1 means write downward */
     writeDirection?: -1 | 1,
-}
+};
 
 /**
  * RingBufferTexture
- * 
- * Write data incrementally as rows into a texture, when the texture is full we start overwriting the oldest data
- * 
- * To read this texture we must pass the write pointer into the shader
+ *
+ * Write data incrementally as rows into a texture; when full we overwrite the oldest data.
+ * Reading requires passing the write pointer (as a UV Y offset) to the shader.
  */
-export class RingBufferTexture {
+export class RingBufferTexture<T extends TextureDataType = TextureDataType> extends DataTexture {
 
     // represents the row we are currently writing to for the next frame
-    writeIndex: number = 0;
+    writeRowIndex: number = 0;
 
     readIndexUniform: { value: number };
     readUVOffsetYUniform: { value: number };
 
-    texture: DataTexture;
+    dataConstructor: TextureDataTypeToConstructor<T>;
 
-    // direction  we are writing in, -1 means we are writing up and +ve reads go into the past
+    dataType: T;
+
+    get data(): TextureDataTypeToArray<T> {
+        return this.image.data as TextureDataTypeToArray<T>;
+    }
+
+    // direction we are writing in, -1 means we are writing up and +ve reads go into the past
     writeDirection: -1 | 1;
 
     readonly rowWidth: number;
     readonly rowCount: number;
+
+    readonly channelCount: number;
 
     constructor({
         data,
@@ -42,13 +65,12 @@ export class RingBufferTexture {
         type,
         filtering = LinearFilter,
         writeDirection = -1,
-    }: RingBufferTextureOptions) {
-        this.rowWidth = rowWidth;
-        this.rowCount = rowCount;
-        this.writeDirection = writeDirection;
+    }: RingBufferTextureOptions<T>) {
+        const channelCount = getChannelCount(format);
+        const dataConstructor = getTypedArrayConstructor(type);
 
-        this.texture = new DataTexture(
-            data ?? new Uint8Array(rowWidth * rowCount),
+        super(
+            data ?? new dataConstructor(rowWidth * rowCount * channelCount),
             rowWidth,
             rowCount,
             format,
@@ -61,115 +83,110 @@ export class RingBufferTexture {
             0,
             NoColorSpace
         );
-        this.texture.flipY = false;
-        this.texture.generateMipmaps = false;
-        this.texture.needsUpdate = true;
 
-        let _instance = this;
+        this.rowWidth = rowWidth;
+        this.rowCount = rowCount;
+        this.writeDirection = writeDirection;
+        this.channelCount = channelCount;
+        this.dataType = type;
+        this.dataConstructor = dataConstructor;
+
+        this.flipY = false;
+        this.generateMipmaps = false;
+        this.needsUpdate = true;
+        // be explicit to avoid row alignment issues for odd widths/byte sizes
+        this.unpackAlignment = 1;
+
+        const _instance = this;
         this.readIndexUniform = {
             get value() {
-                return _instance.writeIndex - _instance.writeDirection;
+                return _instance.writeRowIndex - _instance.writeDirection;
             },
         };
 
         this.readUVOffsetYUniform = {
             get value() {
-                return (_instance.writeIndex - _instance.writeDirection) / _instance.rowCount;
+                return (_instance.writeRowIndex - _instance.writeDirection) / _instance.rowCount;
             },
         };
     }
 
     /**
-     * Write a row into the texture
+     * Write a single row into the texture (in-place, no staging textures)
      */
-    write(renderer: WebGLRenderer, data: ArrayBufferView) {
-        // upload data to the texture
-        // create a new data texture for the row
-        // use renderer copyTextureToTexture
-        let rowData = new DataTexture(
-            data,
-            this.rowWidth,
-            1,
-            this.texture.format as PixelFormat,
-            this.texture.type,
-            UVMapping,
-            ClampToEdgeWrapping,
-            ClampToEdgeWrapping,
-            NearestFilter,
-            NearestFilter,
-        );
-        rowData.needsUpdate = true;
-        rowData.flipY = false;
-        rowData.generateMipmaps = false;
+    writeRow(data: ArrayLike<number> | TextureDataTypeToArray<T>) {
+        // copy row into the CPU-side buffer at the correct offset
+        const elementCount = this.rowWidth * this.channelCount;  // elements per row
+        const start = this.writeRowIndex * elementCount;         // element offset (NOT bytes)
 
-        let writePosition = new Vector2(
-            0,
-            this.writeIndex,
-        );
+        if (data.length !== elementCount) {
+            throw new Error(`RingBufferTexture: writeRow data length (${data.length}) does not match row size (${elementCount})`);
+        }
 
-        // ensure the texture is initialized
-        renderer.initTexture(this.texture);
+        (this.image.data as TypedArray).set(data, start);
 
-        // older three.js interface
-        // renderer.copyTextureToTexture(
-        //     writePosition,
-        //     rowData,
-        //     this.texture,
-        //     0,
-        // );
+        // mark just this as needs update
+        let needsUpdateRange = true;
+        for (let updateRange of this.updateRanges) {
+            if (updateRange.start === start && updateRange.count === elementCount) {
+                needsUpdateRange = false;
+                break;
+            }
+        }
+        if (needsUpdateRange) {
+            this.addUpdateRange(start, elementCount); // counts are in elements
+        }
 
-        // three r171 interface
-        renderer.copyTextureToTexture(
-            rowData,
-            this.texture,
-            null,
-            writePosition
-        );
+        // trigger the upload on next render
+        this.needsUpdate = true;
 
-        // increment the write row
-        this.writeIndex = mod(this.writeIndex + this.writeDirection, this.rowCount);
+        // advance the ring pointer
+        this.writeRowIndex = mod(this.writeRowIndex + this.writeDirection, this.rowCount);
+    }
+
+    /**
+     * Write normalized [0,1] data into the texture
+     */
+    writeRowWithNormalizedData(data: ArrayLike<number>) {
+        const dataTextureValues = new Array<number>(data.length);
+        for (let i = 0; i < data.length; i++) {
+            dataTextureValues[i] = normalizedToTextureValue(data[i], this.dataType);
+        }
+        this.writeRow(dataTextureValues);
     }
 
     getShader<T extends string>(samplerName: T): {
-        uniforms: Record<
-            T |
-            `${T}_readUVOffsetY`
-        , Uniform<any>>,
+        uniforms: Record<T | `${T}_readUVOffsetY`, Uniform<any>>,
         glsl: string,
         readRingBufferFn: string,
         samplerName: T,
     } {
         return {
             uniforms: {
-                [samplerName]: new Uniform(this.texture),
+                [samplerName]: new Uniform(this),
                 [`${samplerName}_readUVOffsetY`]: this.readUVOffsetYUniform,
             } as any,
             glsl: /* glsl */`
                 uniform sampler2D ${samplerName};
                 uniform float ${samplerName}_readUVOffsetY;
-                
+
                 const float ${samplerName}_rowWidth = ${this.rowWidth.toFixed(1)};
                 const float ${samplerName}_rowCount = ${this.rowCount.toFixed(1)};
 
                 vec4 readRingBuffer_${samplerName}(vec2 uv) {
-                    return texture2D(${samplerName}, vec2(
-                        uv.x,
-                        // repeat wrapping is already set on the texture so we don't need to wrap manually
-                        ${samplerName}_readUVOffsetY + uv.y
-                    ));
+                // Use fract() so this is robust even if Y repeat is clamped on NPOT textures
+                return texture2D(${samplerName}, vec2(
+                    uv.x,
+                    fract(${samplerName}_readUVOffsetY + uv.y)
+                ));
                 }
             `,
-            samplerName: samplerName,
+            samplerName,
             readRingBufferFn: `readRingBuffer_${samplerName}`,
-        }
+        };
     }
 
     dispose() {
-        this.texture.dispose();
+        super.dispose();
     }
-
-}
-
-function mod(a: number, b: number) {
-    return ((a % b) + b) % b;
 }
