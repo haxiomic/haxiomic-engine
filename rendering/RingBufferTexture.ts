@@ -156,12 +156,33 @@ export class RingBufferTexture<T extends TextureDataType = TextureDataType> exte
     }
 
     getShader<T extends string>(samplerName: T): {
+        /**
+        * Add these uniforms to your ShaderMaterial uniforms object
+        * uniforms: { ...ringBufferTexture.getShader('mySampler').uniforms  }
+        */
         uniforms: Record<T | `${T}_readUVOffsetY`, Uniform<any>>,
+        /**
+        * Add this GLSL code to your shader (e.g. vertexShader or fragmentShader)
+        */
         glsl: string,
+        /**
+        * Call this function in your shader to read the texture as a ring buffer
+        * Signature: `vec4 readRingBuffer_<samplerName>(vec2(x, historyFraction));`
+        * where x ranges from 0 to 1 across the row, and historyFraction is 0 for the most recent row,
+        * For example:
+        * ```glsl
+        *   float historyFraction = 0.5; // halfway back in time
+        *   ${ringBufferTexture.getShader('mySampler').readRingBufferFn}(vec2(0.5, historyFraction));
+        * ```
+        */
         readRingBufferFn: string,
         samplerName: T,
     } {
         return {
+            /**
+             * Add these uniforms to your ShaderMaterial uniforms object
+             * uniforms: { ...ringBufferTexture.getShader('mySampler').uniforms  }
+             */
             uniforms: {
                 [samplerName]: new Uniform(this),
                 [`${samplerName}_readUVOffsetY`]: this.readUVOffsetYUniform,
@@ -181,8 +202,8 @@ export class RingBufferTexture<T extends TextureDataType = TextureDataType> exte
                 ));
                 }
             `,
-            samplerName,
             readRingBufferFn: `readRingBuffer_${samplerName}`,
+            samplerName,
         };
     }
 
