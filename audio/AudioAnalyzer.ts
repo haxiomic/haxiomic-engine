@@ -47,7 +47,11 @@ const console = new NamedConsole('AudioAnalyzer');
  * Provides 5-band EQ analysis and enhanced frequency band processing
  */
 export class AudioAnalyzer {
-  private analyser: AnalyserNode;
+
+  analyser: AnalyserNode;
+
+  /** Noise gate threshold in dBFS (values below are treated as silence) */
+  noiseGateDb = -70;
   
   // Analysis data buffers
   private frequencyData: Uint8Array<ArrayBuffer>;
@@ -66,9 +70,6 @@ export class AudioAnalyzer {
   
   // Static flag to log frequency mapping only once across all instances
   private static hasLoggedBandMapping = false;
-
-  // Noise gate threshold in dBFS (values below are treated as silence)
-  private readonly noiseGateDb = -70;
 
   constructor(analyser: AnalyserNode) {
     this.analyser = analyser;
@@ -360,14 +361,6 @@ export class AudioAnalyzer {
     
     // Reset smoothing state since frequency mapping changed
     this.previousBandValues = new Array(this.musicFrequencyBands.length).fill(0);
-  }
-  
-  /**
-   * Set smoothing time constant on the wrapped AnalyserNode (0.0 - 1.0)
-   */
-  setSmoothingTimeConstant(value: number): void {
-    const clampedValue = Math.max(0, Math.min(1, value));
-    this.analyser.smoothingTimeConstant = clampedValue;
   }
   
   /**

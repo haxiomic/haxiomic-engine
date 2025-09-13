@@ -129,7 +129,7 @@ export class AudioAnalyzerTexture<T extends TextureDataType = TextureDataType> e
         return this.intervalHandle !== null;
     }
     
-    dispose(): void {
+    dispose = () => {
         this.stop();
         super.dispose();
     }
