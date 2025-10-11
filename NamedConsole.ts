@@ -16,9 +16,23 @@ export enum LogLevel {
  * 
  * Usage:
  * 
- * const console = new NamedConsole('<magenta,b>Example</>');
+ * const console = new NamedConsole('Example');
  */
 export class NamedConsole {
+
+	static colors = [
+		'#FF6B6B',
+		'#FF9F40',
+		'#FFD93D',
+		'#6BCF7F',
+		'#4ECDC4',
+		'#45B7D1',
+		'#6C8EBF',
+		'#9B7EDE',
+		'#D77FB3',
+		'#FF6B9D',
+	];
+	private static currentColorIndex = 0;
 
 	typeFormattingMap = {
 		'number': 'green',
@@ -34,13 +48,17 @@ export class NamedConsole {
 
 	logLevel: LogLevel = LogLevel.Debug;
 
+	/** emits <$color> before prefix */
+	color: string;
+
 	constructor(public prefix: string, logLevel?: LogLevel) {
 		if (logLevel != null) this.logLevel = logLevel;
+		this.color = NamedConsole.colors[(NamedConsole.currentColorIndex++) % NamedConsole.colors.length];
 	}
 
 	log = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Log) return;
-		Console.log(`[${this.prefix}]`, ...args);
+		Console.log(`<${this.color}>[${this.prefix}]<//>`, ...args);
 	}
 
 	error = (...args: any[]) => {

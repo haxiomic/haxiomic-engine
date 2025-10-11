@@ -84,7 +84,7 @@ export function explicitRoutes<R extends InternalRouteMap>(
 	validators?: RouteValidators<R>,
 	middleware?: (req: Request, res: Response, next: NextFunction) => void
 ) {
-	const console = new NamedConsole('<magenta,b>Explicit Express</>');
+	const console = new NamedConsole('Explicit Express');
 
 	for (const path in handlers) {
 		const [method, route] = path.split(' ', 2) as [Method, string];

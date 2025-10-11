@@ -9,8 +9,8 @@ export class Xoshiro128 {
 	seedC: number = 0;
 	seedD: number = 0;
 
-	constructor() {
-		this.resetSeed();
+	constructor(seed?: string) {
+		this.resetSeed(seed);
 	}
 
 	resetSeed(input: string = "hello-random") {
