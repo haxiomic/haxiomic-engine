@@ -274,6 +274,9 @@ export namespace Rendering {
 		renderer: WebGLRenderer,
 		options: Omit<Rendering.ShaderPassOptions, 'shader'> & {
 			shaderKey?: string,
+			/**
+			 * Varying `varying vec2 vUv;` is defined for you
+			 */
 			fragmentShader: string
 		}
 	) {
@@ -281,7 +284,7 @@ export namespace Rendering {
 		let shader = shaderPassMaterialCache[shaderKey];
 		if (!shader) {
 			shader = new ShaderMaterial({
-				fragmentShader: options.fragmentShader,
+				fragmentShader: `varying vec2 vUv;` + options.fragmentShader,
 				vertexShader: /*glsl*/`
 					varying vec2 vUv;
 					void main() {
