@@ -47,17 +47,17 @@ export namespace Console {
 	export let debugPrefix = '<b,magenta>><//>';
 	export let argSeparator = ' ';
 
-	export function log(...args: any[]){
+	export function log(...args: any[]) {
 		if (emitLog) {
 			printlnArgsFormatted([logPrefix, ...args], OutputStream.Log);
 		}
 	}
 
-	export function warn(...args: any[]){
+	export function warn(...args: any[]) {
 		printlnArgsFormatted([warnPrefix, ...args], OutputStream.Warn);
 	}
 
-	export function error(...args: any[]){
+	export function error(...args: any[]) {
 		let errorStack = new Error();
 		let callerInfo = getCallerInfo(errorStack);
 
@@ -65,9 +65,9 @@ export namespace Console {
 			let callerPrefix = callerInfoPrefix(callerInfo);
 			// print debug message
 			printlnArgsFormatted([
-					errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>:` : ''),
-					...args
-				],
+				errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>:` : ''),
+				...args
+			],
 				OutputStream.Error
 			);
 		} else {
@@ -75,17 +75,17 @@ export namespace Console {
 		}
 	}
 
-	export function success(...args: any[]){
+	export function success(...args: any[]) {
 		printlnArgsFormatted([successPrefix, ...args], OutputStream.Log);
 	}
 
-	export function verbose(...args: any[]){
+	export function verbose(...args: any[]) {
 		if (emitVerbose) {
 			printlnArgsFormatted(args, OutputStream.Log);
 		}
 	}
 
-	export function debug(...args: any[]){
+	export function debug(...args: any[]) {
 		if (!emitDebug) return;
 
 		// get stack trace
@@ -96,9 +96,9 @@ export namespace Console {
 			let callerPrefix = callerInfoPrefix(callerInfo);
 			// print debug message
 			printlnArgsFormatted([
-					debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>:` : ''),
-					...args
-				],
+				debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>:` : ''),
+				...args
+			],
 				OutputStream.Debug
 			);
 		} else {
@@ -144,14 +144,14 @@ export namespace Console {
 		return parts.join(':');
 	}
 
-	export function examine(...args: any[]){
+	export function examine(...args: any[]) {
 		// use node's util.inspect to print objects
 		for (let arg of args) {
 			printlnArgsFormatted([logPrefix, arg], OutputStream.Log);
 		}
 	}
 
-	export function printlnArgsFormatted(args: any[], outputStream?: OutputStream){
+	export function printlnArgsFormatted(args: any[], outputStream?: OutputStream) {
 		if (formatMode === FormatMode.AsciiTerminal) {
 			let formatted = args.map(arg => {
 				switch (typeof arg) {
@@ -160,7 +160,7 @@ export namespace Console {
 				}
 			}).join(argSeparator);
 			return println(formatted, outputStream);
-		}  else if (formatMode === FormatMode.BrowserConsole) {
+		} else if (formatMode === FormatMode.BrowserConsole) {
 			// here we map args by type, if string we pass through formatter, everything else we log as-is
 			let formatString = '';
 			let browserFormatArguments = new Array<string>();
@@ -208,11 +208,11 @@ export namespace Console {
 		}
 	}
 
-	export function printlnFormatted(s = '', outputStream?: OutputStream){
+	export function printlnFormatted(s = '', outputStream?: OutputStream) {
 		return printlnArgsFormatted([s + '\n'], outputStream);
 	}
 
-	export function println(s = '', outputStream?: OutputStream){
+	export function println(s = '', outputStream?: OutputStream) {
 		return print(s + '\n', outputStream);
 	}
 
@@ -343,15 +343,15 @@ export namespace Console {
 						}
 					} else {
 						return getAsciiFormat(FormatFlag.RESET) +
-								activeFormatFlagStack.map(getAsciiFormat)
+							activeFormatFlagStack.map(getAsciiFormat)
 								.filter(s => s != null)
 								.join('');
 					}
 				case FormatMode.BrowserConsole:
 					browserFormatArguments.push(
 						activeFormatFlagStack.map(getBrowserFormat)
-						.filter(s => s != null)
-						.join(';')
+							.filter(s => s != null)
+							.join(';')
 					);
 					return '%c';
 				case FormatMode.Disabled:
@@ -440,7 +440,7 @@ export namespace Console {
 			}
 
 			// validate hex
-			if((/[^0-9a-f]/i).test(hex) || hex.length < 6) {
+			if ((/[^0-9a-f]/i).test(hex) || hex.length < 6) {
 				// hex contains a non-hexadecimal character or it's too short
 				return '' as any; // return empty flag, which has no formatting rules
 			}
@@ -464,25 +464,43 @@ export namespace Console {
 	}
 
 	enum AsciiColorCodes {
-		ASCII_BLACK_CODE =  0,
-		ASCII_RED_CODE =  1,
-		ASCII_GREEN_CODE =  2,
-		ASCII_YELLOW_CODE =  3,
-		ASCII_BLUE_CODE =  4,
-		ASCII_MAGENTA_CODE =  5,
-		ASCII_CYAN_CODE =  6,
-		ASCII_WHITE_CODE =  7,
-		ASCII_LIGHT_BLACK_CODE =  8,
-		ASCII_LIGHT_RED_CODE =  9,
-		ASCII_LIGHT_GREEN_CODE =  10,
-		ASCII_LIGHT_YELLOW_CODE =  11,
-		ASCII_LIGHT_BLUE_CODE =  12,
-		ASCII_LIGHT_MAGENTA_CODE =  13,
-		ASCII_LIGHT_CYAN_CODE =  14,
-		ASCII_LIGHT_WHITE_CODE =  15,
+		ASCII_BLACK_CODE = 0,
+		ASCII_RED_CODE = 1,
+		ASCII_GREEN_CODE = 2,
+		ASCII_YELLOW_CODE = 3,
+		ASCII_BLUE_CODE = 4,
+		ASCII_MAGENTA_CODE = 5,
+		ASCII_CYAN_CODE = 6,
+		ASCII_WHITE_CODE = 7,
+		ASCII_LIGHT_BLACK_CODE = 8,
+		ASCII_LIGHT_RED_CODE = 9,
+		ASCII_LIGHT_GREEN_CODE = 10,
+		ASCII_LIGHT_YELLOW_CODE = 11,
+		ASCII_LIGHT_BLUE_CODE = 12,
+		ASCII_LIGHT_MAGENTA_CODE = 13,
+		ASCII_LIGHT_CYAN_CODE = 14,
+		ASCII_LIGHT_WHITE_CODE = 15,
 	}
 
-	function getAsciiFormat(flag:FormatFlag): string {
+	function getAsciiFormat(flag: FormatFlag): string {flag
+		// custom hex color
+		if (flag.charAt(0) === '#') {
+			const hex = flag.slice(1);
+			const r = parseInt(hex.slice(0, 2), 16);
+			const g = parseInt(hex.slice(2, 4), 16);
+			const b = parseInt(hex.slice(4, 6), 16);
+			return '\x1b[38;5;' + rgbToAscii256(r, g, b) + 'm';
+		}
+
+		// custom hex background
+		if (flag.slice(0, 3) === 'bg#') {
+			const hex = flag.slice(3);
+			const r = parseInt(hex.slice(0, 2), 16);
+			const g = parseInt(hex.slice(2, 4), 16);
+			const b = parseInt(hex.slice(4, 6), 16);
+			return '\x1b[48;5;' + rgbToAscii256(r, g, b) + 'm';
+		}
+
 		// octal escape \033 is not allowed in strict mode
 		// instead use \x1b
 		switch (flag) {
@@ -534,7 +552,54 @@ export namespace Console {
 		}
 	}
 
-	function getBrowserFormat(flag:FormatFlag): string | null {
+	function rgbToAscii256(r: number, g: number, b: number): number | null {
+		// Find the nearest value's index in the set
+		// A metric like ciede2000 would be better, but this will do for now
+		function nearIdx(c: number, set: number[]): number {
+			let delta = Number.POSITIVE_INFINITY;
+			let index = -1;
+			for (let i = 0; i < set.length; i++) {
+				const d = Math.abs(c - set[i]);
+				if (d < delta) {
+					delta = d;
+					index = i;
+				}
+			}
+			return index;
+		}
+
+		function clamp(x: number, min: number, max: number): number {
+			return Math.max(Math.min(x, max), min);
+		}
+
+		// Colors are index 16 to 231 inclusive = 216 colors
+		// Steps are in spaces of 40 except for the first which is 95
+		// (0x5f + 40 * (n - 1)) * (n > 0 ? 1 : 0)
+		const colorSteps = [0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff];
+		const ir = nearIdx(r, colorSteps), ig = nearIdx(g, colorSteps), ib = nearIdx(b, colorSteps);
+		const ier = Math.abs(r - colorSteps[ir]), ieg = Math.abs(g - colorSteps[ig]), ieb = Math.abs(b - colorSteps[ib]);
+		const averageColorError = ier + ieg + ieb;
+
+		// Gray scale values are 232 to 255 inclusive = 24 colors
+		// Steps are in spaces of 10
+		// 0x08 + 10 * n = c
+		const jr = Math.round((r - 0x08) / 10), jg = Math.round((g - 0x08) / 10), jb = Math.round((b - 0x08) / 10);
+		const jer = Math.abs(r - clamp((jr * 10 + 0x08), 0x08, 0xee));
+		const jeg = Math.abs(g - clamp((jg * 10 + 0x08), 0x08, 0xee));
+		const jeb = Math.abs(b - clamp((jb * 10 + 0x08), 0x08, 0xee));
+		const averageGrayError = jer + jeg + jeb;
+
+		// If we hit an exact grayscale match then use that instead
+		if (averageGrayError < averageColorError && r === g && g === b) {
+			const grayIndex = jr + 232;
+			return grayIndex;
+		} else {
+			const colorIndex = 16 + ir * 36 + ig * 6 + ib;
+			return colorIndex;
+		}
+	}
+
+	function getBrowserFormat(flag: FormatFlag): string | null {
 		// custom hex color
 		if (flag.charAt(0) == '#') {
 			return `color: ${flag}`;

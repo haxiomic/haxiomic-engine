@@ -51,21 +51,22 @@ export class NamedConsole {
 	/** emits <$color> before prefix */
 	color: string;
 
-	constructor(public prefix: string, logLevel?: LogLevel) {
+	constructor(public prefix?: string, logLevel?: LogLevel) {
 		if (logLevel != null) this.logLevel = logLevel;
 		this.color = NamedConsole.colors[(NamedConsole.currentColorIndex++) % NamedConsole.colors.length];
 	}
 
 	log = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Log) return;
-		Console.log(`<${this.color}>[${this.prefix}]<//>`, ...args);
+		if (this.prefix) args = [`<${this.color}>[${this.prefix}]<//>`, ...args];
+		Console.log(...args);
 	}
 
 	error = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Error) return;
 
+		const namedPrefix = this.prefix ? [`<${this.color}>[${this.prefix}]<//> `] : [];
 		const errorPrefix = Console.errorPrefix;
-		const argSeparator = Console.argSeparator;
 
 		let errorStack = new Error();
 		let callerInfo = Console.getCallerInfo(errorStack);
@@ -74,6 +75,7 @@ export class NamedConsole {
 			let callerPrefix = Console.callerInfoPrefix(callerInfo);
 			// print debug message
 			Console.printlnArgsFormatted([
+					...namedPrefix,
 					errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
 					...args
 				],
@@ -81,6 +83,7 @@ export class NamedConsole {
 			);
 		} else {
 			Console.printlnArgsFormatted([
+					...namedPrefix,
 					errorPrefix,
 					...args
 				],
@@ -91,25 +94,29 @@ export class NamedConsole {
 
 	warn = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Warn) return;
-		Console.warn(`[${this.prefix}]`, ...args);
+		if (this.prefix) args = [`<${this.color}>[${this.prefix}]</>`, ...args];
+		Console.warn(...args);
 	}
 
 	info = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Log) return;
-		Console.log(`[${this.prefix}]`, ...args);
+		if (this.prefix) args = [`<${this.color}>[${this.prefix}]</>`, ...args];
+		Console.log(...args);
 	}
 
 	success = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Log) return;
-		Console.success(`[${this.prefix}]`, ...args);
+		if (this.prefix) args = [`<${this.color}>[${this.prefix}]</>`, ...args];
+		Console.success(...args);
 	}
 
 	debug = (...args: any[]) => {
 		if (this.logLevel < LogLevel.Debug) return;
 
+		const namedPrefix = this.prefix ? [`<${this.color}>[${this.prefix}]<//> `] : [];
+
 		const {
 			debugPrefix,
-			argSeparator,
 			emitDebug,
 			OutputStream,
 		} = Console;
@@ -124,6 +131,7 @@ export class NamedConsole {
 			let callerPrefix = Console.callerInfoPrefix(callerInfo);
 			// print debug message
 			Console.printlnArgsFormatted([
+					...namedPrefix,
 					debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
 					...args
 				],
@@ -131,6 +139,7 @@ export class NamedConsole {
 			);
 		} else {
 			Console.printlnArgsFormatted([
+					...namedPrefix,
 					debugPrefix,
 					...args
 				],
