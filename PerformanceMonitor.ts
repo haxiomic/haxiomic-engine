@@ -1,6 +1,6 @@
+import { EventSignal } from "@haxiomic/event-signal";
 import { Animator } from "physics-animator";
 import { Spring } from "physics-animator/animators";
-import { EventEmitter } from "./EventEmitter.js";
 
 export type PerformanceMonitorOptions = {
     smoothingHalfLife_s?: number;
@@ -36,7 +36,7 @@ export class PerformanceMonitor {
     callbackWaitTime_s: number;
 
     events = {
-        dispose: new EventEmitter<void>(),
+        dispose: new EventSignal<void>(),
     }
 
     protected smoothingParameters: Spring.PhysicsParameters;

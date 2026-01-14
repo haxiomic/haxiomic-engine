@@ -9,7 +9,6 @@ import { Console } from "./Console.js";
 import { DevUI } from "./dev/DevUI.js";
 import { EnvironmentProbes } from "./dev/EnvironmentProbes.js";
 import { TextureVisualizer } from "./dev/TextureVisualizer.js";
-import { EventEmitter } from "./EventEmitter.js";
 import InteractionManager from "./interaction/InteractionManager.js";
 import { ThreeInteraction } from "./interaction/ThreeInteraction.js";
 import { Layer } from "./Layer.js";
@@ -19,6 +18,7 @@ import RenderTargetStore from "./rendering/RenderTargetStore.js";
 // three js stats
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { TransformGizmo } from "./dev/TransformGizmo.js";
+import { EventSignal } from "@haxiomic/event-signal";
 
 export type PhysicallyBasedViewerOptions<Controls extends {
 	enabled?: boolean,
@@ -73,23 +73,23 @@ export class PhysicallyBasedViewer<
 
 	readonly events = {
 		/** Dispatched once *per animation frame* to update world state */
-		frameUpdate: new EventEmitter<{
+		frameUpdate: new EventSignal<{
 			t_s: number,
 			dt_s: number,
 			camera: Camera,
 			scene: Scene,
 		}>(),
 		/** Dispatched once *per animation frame* */
-		beforeFrameRender: new EventEmitter<{
+		beforeFrameRender: new EventSignal<{
 			renderer: WebGLRenderer,
 			t_s: number,
 			dt_s: number,
 			camera: Camera,
 			scene: Scene,
 		}>(),
-		dispose: new EventEmitter<void>(),
-		canvasResized: new EventEmitter<{ width: number, height: number }>(),
-		environmentChanged: new EventEmitter<{ scene: Scene, environment: Texture | null }>(),
+		dispose: new EventSignal<void>(),
+		canvasResized: new EventSignal<{ width: number, height: number }>(),
+		environmentChanged: new EventSignal<{ scene: Scene, environment: Texture | null }>(),
 	}
 
 	readonly directionalLight: DirectionalLight;
@@ -450,7 +450,7 @@ export class PhysicallyBasedViewer<
 					node.layers.disable(Layer.Default);
 					node.layers.enable(Layer.Developer);
 				});
-				directionalLightGizmo.events.change.addListener((e) => { });
+				directionalLightGizmo.events.change.addListener(() => { });
 				directionalLightGizmo.scale.setScalar(0.4);
 				directionalLight.add(directionalLightGizmo);
 			}
@@ -711,7 +711,7 @@ function createDomEventProxy(interactionManager: InteractionManager, priority?: 
 	return {
 		getRootNode: () => interactionManager.el.getRootNode(),
 		addEventListener: (type: string, listener: (event: Event) => void, options: {}) => {
-			let eventEmitter: EventEmitter<Event> = (eventMap as any)[type.toLowerCase()];
+			let eventEmitter: EventSignal<Event> = (eventMap as any)[type.toLowerCase()];
 			if (eventEmitter != null) {
 				eventEmitter.addListener(listener, priority);
 			} else {
@@ -719,7 +719,7 @@ function createDomEventProxy(interactionManager: InteractionManager, priority?: 
 			}
 		},
 		removeEventListener: (type: string, listener: (event: Event) => void, options: {}) => {
-			let eventEmitter: EventEmitter<Event> = (eventMap as any)[type.toLowerCase()];
+			let eventEmitter: EventSignal<Event> = (eventMap as any)[type.toLowerCase()];
 			if (eventEmitter != null) {
 				eventEmitter.removeListener(listener);
 			} else {

@@ -1,4 +1,4 @@
-import { EventEmitter } from "../EventEmitter.js";
+import { EventSignal } from "@haxiomic/event-signal";
 
 export type WebSocketRobustOptions = {
 	/**
@@ -43,12 +43,12 @@ export class WebSocketRobust {
 	private lastReadyState: ReadyState | null = null;
 
 	events = {
-		message: new EventEmitter<MessageEvent>(),
-		open: new EventEmitter<void>(),
-		close: new EventEmitter<CloseEvent>(),
-		error: new EventEmitter<void>(),
-		readyStateChange: new EventEmitter<ReadyState>(),
-		abort: new EventEmitter<void>(),
+		message: new EventSignal<MessageEvent>(),
+		open: new EventSignal<void>(),
+		close: new EventSignal<CloseEvent>(),
+		error: new EventSignal<void>(),
+		readyStateChange: new EventSignal<ReadyState>(),
+		abort: new EventSignal<void>(),
 	}
 
 	constructor(

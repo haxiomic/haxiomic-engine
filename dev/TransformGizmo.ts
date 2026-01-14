@@ -1,6 +1,6 @@
 import { BackSide, BufferGeometry, Camera, Color, ColorRepresentation, ConeGeometry, CylinderGeometry, Matrix4, Mesh, MeshBasicMaterial, Object3D, Plane, Quaternion, Ray, Raycaster, Scene, TorusGeometry, Vector3, Vector4, WebGLRenderer } from "three";
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { EventEmitter } from "../EventEmitter.js";
+import { EventSignal } from "@haxiomic/event-signal";
 import { makeInteractive } from "../interaction/ThreeInteraction.js";
 import { Animator } from "physics-animator";
 import { Spring } from "physics-animator/animators";
@@ -24,9 +24,9 @@ export type Transform = {
 export class TransformGizmo<T extends Object3D> extends Mesh {
 
 	events = {
-		changeStart: new EventEmitter<{targetObject: T, transform: Transform}>(),
-		change: new EventEmitter<{targetObject: T, transform: Transform}>(),
-		changeEnd: new EventEmitter<{targetObject: T, transform: Transform}>(),
+		changeStart: new EventSignal<{targetObject: T, transform: Transform}>(),
+		change: new EventSignal<{targetObject: T, transform: Transform}>(),
+		changeEnd: new EventSignal<{targetObject: T, transform: Transform}>(),
 	}
 
 	onChangeStart: (targetObject: T, transform: Transform) => void = () => {};
@@ -343,10 +343,10 @@ class TransformGizmoComponent extends Mesh<BufferGeometry, MeshBasicMaterial> {
 	outline: Mesh<BufferGeometry, MeshBasicMaterial>;
 
 	events = {
-		onHoverStart: new EventEmitter(),
-		onHoverEnd: new EventEmitter(),
-		onSelectStart: new EventEmitter(),
-		onSelectEnd: new EventEmitter(),
+		onHoverStart: new EventSignal(),
+		onHoverEnd: new EventSignal(),
+		onSelectStart: new EventSignal(),
+		onSelectEnd: new EventSignal(),
 	}
 
 	constructor(

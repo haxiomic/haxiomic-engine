@@ -1,4 +1,4 @@
-import { EventEmitter } from "../EventEmitter.js"
+import { EventSignal } from "@haxiomic/event-signal"
 
 /**
  * InteractionManager implements handles common edge cases when using pointer events for realtime content
@@ -12,22 +12,22 @@ export default class InteractionManager {
     readonly el: HTMLElement
 
     readonly events = {
-        click: new EventEmitter<MouseEvent>(),
+        click: new EventSignal<MouseEvent>(),
 
-        pointerDown: new EventEmitter<PointerEvent>(),
-        pointerMove: new EventEmitter<PointerEvent>(),
-        pointerUp: new EventEmitter<PointerEvent>(),
-        pointerCancel: new EventEmitter<PointerEvent>(),
+        pointerDown: new EventSignal<PointerEvent>(),
+        pointerMove: new EventSignal<PointerEvent>(),
+        pointerUp: new EventSignal<PointerEvent>(),
+        pointerCancel: new EventSignal<PointerEvent>(),
         
-        globalPointerUp: new EventEmitter<PointerEvent>(),
+        globalPointerUp: new EventSignal<PointerEvent>(),
 
 
-        wheel: new EventEmitter<WheelEvent>(),
+        wheel: new EventSignal<WheelEvent>(),
 
-        contextMenu: new EventEmitter<MouseEvent>(),
+        contextMenu: new EventSignal<MouseEvent>(),
 
-        keyDown: new EventEmitter<KeyboardEvent>(),
-        keyUp: new EventEmitter<KeyboardEvent>(),
+        keyDown: new EventSignal<KeyboardEvent>(),
+        keyUp: new EventSignal<KeyboardEvent>(),
         
     }
 

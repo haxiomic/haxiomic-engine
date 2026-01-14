@@ -15,20 +15,21 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "physics-animator": "^0.15.1",
-    "@types/node": "^22.10.2",
+    "@haxiomic/event-signal": "^1.2.0",
     "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
     "@types/react": "^19.0.12",
     "find-cache-dir": "^5.0.0",
+    "physics-animator": "^0.14.0",
     "webpack-glsl-minify": "^1.5.0"
   },
   "peerDependencies": {
-    "physics-animator": "^0.14.0",
     "@types/three": "^0.179.0",
-    "zod": "^3.24.2",
-    "typescript": "^5.7.2",
+    "esbuild": "^0.25.1",
+    "physics-animator": "^0.14.0",
     "three": "^0.179.1",
-    "esbuild": "^0.25.1"
+    "typescript": "^5.7.2",
+    "zod": "^3.24.2"
   },
   "exports": {
     "./*": "./dist/*.js",
@@ -39,7 +40,6 @@
     "./**/*.js": "./dist/**/*.js",
     "./*.ts": "./dist/*.ts",
     "./**/*.ts": "./dist/**/*.ts",
-
     "./*.mjs": "./*.mjs",
     "./**/*.mjs": "./**/*.mjs",
     "./*.glsl": "./*.glsl",

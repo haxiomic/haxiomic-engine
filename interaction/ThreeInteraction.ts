@@ -1,9 +1,9 @@
 import { Camera, Intersection, Object3D, Object3DEventMap, Ray, Raycaster, Scene, Vector2 } from "three"
-import { EventEmitter } from "../EventEmitter.js";
+import { EventSignal } from "@haxiomic/event-signal";
 import InteractionManager from "./InteractionManager.js";
 import { Layer } from "../Layer.js";
 
-export type PointerEventExtended = EventEmitter.Emitted<PointerEvent>;
+export type PointerEventExtended = EventSignal.Emitted<PointerEvent>;
 
 export class ThreeInteraction {
 
@@ -309,7 +309,7 @@ export type InteractionFields = {
     sortPriority?: number,
 
     events: {
-        pointerDown: EventEmitter<{
+        pointerDown: EventSignal<{
             event: PointerEventExtended,
             target: InteractiveObject3D,
             raycaster: Raycaster,
@@ -319,28 +319,28 @@ export type InteractionFields = {
             /** If called, pointer will be captured */
             capturePointer(): void
         }>,
-        pointerMove: EventEmitter<{
+        pointerMove: EventSignal<{
             event: PointerEventExtended,
             target: InteractiveObject3D,
             captured: boolean,
             raycaster: Raycaster,
             intersection?: Intersection<InteractiveObject3D>
         }>,
-        pointerUp: EventEmitter<{
+        pointerUp: EventSignal<{
             event: PointerEventExtended,
             target: InteractiveObject3D,
             captured: boolean,
             raycaster: Raycaster,
             intersection?: Intersection<InteractiveObject3D>
         }>,
-        pointerOver: EventEmitter<{
+        pointerOver: EventSignal<{
             event: PointerEventExtended,
             target: InteractiveObject3D,
             captured: boolean,
             raycaster: Raycaster,
             intersection: Intersection<InteractiveObject3D>
         }>,
-        pointerOut: EventEmitter<{
+        pointerOut: EventSignal<{
             event: PointerEventExtended,
             target: InteractiveObject3D,
             captured: boolean,
@@ -360,11 +360,11 @@ export function makeInteractive<T extends Object3D>(object: T, settings: Omit<In
     interactiveObject.interaction = {
         ...settings,
         events: {
-            pointerDown: new EventEmitter(),
-            pointerMove: new EventEmitter(),
-            pointerUp: new EventEmitter(),
-            pointerOver: new EventEmitter(),
-            pointerOut: new EventEmitter(),
+            pointerDown: new EventSignal(),
+            pointerMove: new EventSignal(),
+            pointerUp: new EventSignal(),
+            pointerOver: new EventSignal(),
+            pointerOut: new EventSignal(),
         }
     }
     return interactiveObject;
