@@ -19,7 +19,8 @@ export function getPerspectiveFitDistanceSphere(
     camera: PerspectiveCamera,
     sphereRadius: number,
     fitAxis: 'vertical' | 'horizontal' | 'both',
-    zoomMode: 'account-zoom' | 'ignore-zoom' = 'account-zoom'
+    zoomMode: 'account-zoom' | 'ignore-zoom' = 'account-zoom',
+    apparentScale: number = 1,
 ): number {
     // https://www.tldraw.com/f/TUarjjiCcGRndvWDyWpK1?d=v314.74.1589.1072.page
 
@@ -40,7 +41,9 @@ export function getPerspectiveFitDistanceSphere(
             break;
     }
 
-    return sphereRadius / Math.sin(fovRad / 2);
+    const apparentAngle = Math.atan(apparentScale * Math.tan(fovRad / 2));
+
+    return sphereRadius / Math.sin(apparentAngle);
 }
 
 /**
