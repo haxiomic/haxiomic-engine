@@ -12,12 +12,51 @@ export function isFiniteVector2(v: Vector2) {
     return isFinite(v.x) && isFinite(v.y);
 }
 
-export function getPerspectiveFitDistance(camera: PerspectiveCamera, box: Vector3) {
+/**
+ * Calculates the distance a perspective camera needs to be from the center of a sphere to perfectly fit it in view in the vertical FOV.
+ */
+export function getPerspectiveFitDistanceSphere(
+    camera: PerspectiveCamera,
+    sphereRadius: number,
+    fitAxis: 'vertical' | 'horizontal' | 'both',
+    zoomMode: 'account-zoom' | 'ignore-zoom' = 'account-zoom'
+): number {
+    // https://www.tldraw.com/f/TUarjjiCcGRndvWDyWpK1?d=v314.74.1589.1072.page
+
+    const fovY_radians = (zoomMode === 'account-zoom' ? camera.getEffectiveFOV() : camera.fov) * (Math.PI / 180);
+    const fovX_radians = 2 * Math.atan(Math.tan(fovY_radians * 0.5) * camera.aspect);
+
+    let fovRad;
+    switch (fitAxis) {
+        default:
+        case 'vertical':
+            fovRad = fovY_radians;
+            break;
+        case 'horizontal':
+            fovRad = fovX_radians;
+            break;
+        case 'both':
+            fovRad = Math.min(fovX_radians, fovY_radians);
+            break;
+    }
+
+    return sphereRadius / Math.sin(fovRad / 2);
+}
+
+/**
+ * Calculates the distance a perspective camera needs to be from the center of a box to perfectly fit it in view in both vertical and horizontal FOV.
+ */
+export function getPerspectiveFitDistanceBox(
+    camera: PerspectiveCamera,
+    box: Vector3,
+    fitAxis: 'vertical' | 'horizontal' | 'both',
+    zoomMode: 'account-zoom' | 'ignore-zoom' = 'account-zoom'
+): number {
     const width = box.x;
     const height = box.y;
     const depth = box.z;
 
-    const fovY = camera.getEffectiveFOV();
+    const fovY = zoomMode === 'account-zoom' ? camera.getEffectiveFOV() : camera.fov;
     const fovY_radians = fovY * (Math.PI / 180);
 
     // tan(fov_radians * .5) = (worldSpaceSizeXY.y * .5) / distance
@@ -34,5 +73,14 @@ export function getPerspectiveFitDistance(camera: PerspectiveCamera, box: Vector
 
     const fovX_radians = 2 * Math.atan(Math.tan(fovY_radians * 0.5) * (camera.aspect));
     const fitDistanceX = (width * 0.5) / Math.tan(fovX_radians * 0.5);
-    return Math.max(fitDistanceX, fitDistanceY) + depth * .5;
+
+    switch (fitAxis) {
+        default:
+        case 'vertical':
+            return fitDistanceY + depth * .5;
+        case 'horizontal':
+            return fitDistanceX + depth * .5;
+        case 'both':
+            return Math.max(fitDistanceX, fitDistanceY) + depth * .5;
+    }
 }
