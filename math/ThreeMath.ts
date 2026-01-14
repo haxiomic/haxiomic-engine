@@ -22,6 +22,7 @@ export function getPerspectiveFitDistanceSphere(
     zoomMode: 'account-zoom' | 'ignore-zoom' = 'account-zoom',
     apparentScale: number = 1,
 ): number {
+    // https://www.desmos.com/calculator/0bvqqxvvv6
     // https://www.tldraw.com/f/TUarjjiCcGRndvWDyWpK1?d=v314.74.1589.1072.page
 
     const fovY_radians = (zoomMode === 'account-zoom' ? camera.getEffectiveFOV() : camera.fov) * (Math.PI / 180);
