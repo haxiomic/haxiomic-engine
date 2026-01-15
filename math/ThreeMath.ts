@@ -42,7 +42,7 @@ export function getPerspectiveFitDistanceSphere(
             break;
     }
 
-    const apparentAngle = Math.atan(apparentScale * Math.tan(fovRad / 2));
+    const apparentAngle = apparentScale == 1 ? (fovRad * .5) : Math.atan(Math.tan(fovRad * .5) * apparentScale);
 
     return sphereRadius / Math.sin(apparentAngle);
 }
