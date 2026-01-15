@@ -346,7 +346,7 @@ export class PhysicallyBasedViewer<
 					localStorage.setItem(cameraRotationKey, JSON.stringify(camera.rotation.toArray()));
 				}
 				// check if the controls have moved
-				if (needsSave) {
+				if (needsSave && this.controls.enabled) {
 					if (this.controls instanceof OrbitControls) {
 						this.controls.update();
 
