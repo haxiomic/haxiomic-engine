@@ -113,9 +113,32 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
         const orthoHeight = focusDistance / focalLength;
         const orthoWidth = orthoHeight * this.aspect;
 
-        const d = this.far - this.near;
-        const A = -(t * (this.far + this.near) + 2 * (1 - t)) / d;
-        const B = -t * this.near - 1 + t + this.near * A;
+        // Depth mapping coefficients (matrix elements [10] and [14])
+        // These transform view-space Z to NDC Z with proper blending
+        //
+        // Standard depth (NDC z in [-1, 1], near→-1, far→1):
+        //   Perspective: c = -(far+near)/(far-near), d = -2*far*near/(far-near)
+        //   Orthographic: c = -2/(far-near), d = -(far+near)/(far-near)
+        //
+        // Reversed depth (NDC z in [0, 1], near→1, far→0):
+        //   Perspective: c = near/(far-near), d = far*near/(far-near)
+        //   Orthographic: c = 1/(far-near), d = far/(far-near)
+        //
+        const delta = this.far - this.near;
+        let A: number;
+        let B: number;
+
+        if (this.reversedDepth) {
+            // Blended reversed depth: A and B linearly interpolate between
+            // perspective and orthographic reversed formulas
+            const blend = t * this.near + oneMinusT;
+            A = blend / delta;
+            B = this.far * blend / delta;
+        } else {
+            // Blended standard depth
+            A = -(t * (this.far + this.near) + 2 * oneMinusT) / delta;
+            B = -t * this.near - 1 + t + this.near * A;
+        }
 
         const e = this.projectionMatrix.elements;
 
