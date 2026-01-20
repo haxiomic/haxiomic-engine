@@ -37,8 +37,8 @@ export enum OrthoPerspectiveCameraMode {
  * ## Camera Type Detection
  *
  * `isPerspectiveCamera` and `isOrthographicCamera` return values based on `projectionBlend`:
- * - `projectionBlend >= 0.5`: `isPerspectiveCamera = true`, `isOrthographicCamera = false`
- * - `projectionBlend < 0.5`: `isPerspectiveCamera = false`, `isOrthographicCamera = true`
+ * - `projectionBlend >= 0.0`: `isPerspectiveCamera = true`, `isOrthographicCamera = false`
+ * - `projectionBlend < 0.0`: `isPerspectiveCamera = false`, `isOrthographicCamera = true`
  *
  * This allows shaders and Three.js utilities to adapt their behavior accordingly.
  *
@@ -82,18 +82,17 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
         // Override isPerspectiveCamera and isOrthographicCamera with dynamic getters
         // These are checked by Three.js shaders and utilities to determine camera behavior
         // Runtime override - TypeScript still sees inherited types but actual values are dynamic
-        const self = this;
         Object.defineProperty(this, 'isPerspectiveCamera', {
-            get() { return self.projectionBlend >= 0.0; },
+            get: () => this.projectionBlend > 0.0,
             configurable: true,
         });
         Object.defineProperty(this, 'isOrthographicCamera', {
-            get() { return self.projectionBlend < 0.0; },
+            get: () => this.projectionBlend <= 0.00,
             configurable: true,
         });
     }
 
-    updateProjectionMatrix(): void {
+    override updateProjectionMatrix(): void {
         // If pure perspective, use standard implementation for efficiency
         if (this.projectionBlend >= 1.0) {
             super.updateProjectionMatrix();
@@ -150,7 +149,7 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
     /**
      * Copy properties from another camera, including projectionBlend if source is OrthoPerspectiveCamera.
      */
-    copy(source: PerspectiveCamera | OrthoPerspectiveCamera, recursive?: boolean): this {
+    override copy(source: PerspectiveCamera | OrthoPerspectiveCamera, recursive?: boolean): this {
         super.copy(source, recursive);
 
         if ((source as OrthoPerspectiveCamera).isHybridCamera) {
@@ -163,7 +162,7 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
     /**
      * Create a clone of this camera with all properties including projectionBlend.
      */
-    clone(recursive?: boolean): this {
+    override clone(recursive?: boolean): this {
         const camera = new (this.constructor as new () => this)();
         camera.copy(this, recursive);
         return camera;
