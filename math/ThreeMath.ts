@@ -18,7 +18,7 @@ export function isFiniteVector2(v: Vector2) {
 export function getPerspectiveFitDistanceSphere(
     camera: PerspectiveCamera,
     sphereRadius: number,
-    fitAxis: 'vertical' | 'horizontal' | 'both',
+    fitAxis: 'vertical' | 'horizontal' | 'contain' | 'cover',
     zoomMode: 'account-zoom' | 'ignore-zoom' = 'account-zoom',
     apparentScale: number = 1,
 ): number {
@@ -37,8 +37,11 @@ export function getPerspectiveFitDistanceSphere(
         case 'horizontal':
             fovRad = fovX_radians;
             break;
-        case 'both':
-            fovRad = Math.min(fovX_radians, fovY_radians);
+        case 'contain':
+            fovRad = Math.min(fovY_radians, fovX_radians);
+            break;
+        case 'cover':
+            fovRad = Math.max(fovY_radians, fovX_radians);
             break;
     }
 
@@ -53,7 +56,7 @@ export function getPerspectiveFitDistanceSphere(
 export function getPerspectiveFitDistanceBox(
     camera: PerspectiveCamera,
     box: Vector3,
-    fitAxis: 'vertical' | 'horizontal' | 'both',
+    fitAxis: 'vertical' | 'horizontal' | 'contain' | 'cover',
     zoomMode: 'account-zoom' | 'ignore-zoom' = 'account-zoom'
 ): number {
     const width = box.x;
@@ -84,7 +87,9 @@ export function getPerspectiveFitDistanceBox(
             return fitDistanceY + depth * .5;
         case 'horizontal':
             return fitDistanceX + depth * .5;
-        case 'both':
+        case 'contain':
             return Math.max(fitDistanceX, fitDistanceY) + depth * .5;
+        case 'cover':
+            return Math.min(fitDistanceX, fitDistanceY) + depth * .5;
     }
 }
