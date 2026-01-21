@@ -403,10 +403,20 @@ export namespace Rendering {
 		gl.generateMipmap(gl.TEXTURE_2D);
 	}
 
-	export function resizeTexture2D(renderer: WebGLRenderer, texture: Texture, width: number, height: number): WebGLTexture {
+	export type ResizeTexture2DOptions = {
+		source: Texture,
+		width?: number,
+		height?: number,
+	}
+	/**
+	 * copy a 2D texture by rendering it to a new render target of the desired size
+	 * The original is unchanged
+	 */
+	export function copyAndResizeTexture2D(renderer: WebGLRenderer, options: ResizeTexture2DOptions): WebGLTexture {
+		const { source: texture, width, height } = options;
 		const resizedTarget = new WebGLRenderTarget(
-			width,
-			height,
+			width ?? texture.width,
+			height ?? texture.height,
 			{
 				colorSpace: texture.colorSpace as ColorSpace | undefined,
 				generateMipmaps: texture.generateMipmaps,
