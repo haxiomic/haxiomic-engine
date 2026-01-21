@@ -1,9 +1,6 @@
-import InteractionManager from "haxiomic-engine/interaction/InteractionManager";
-import { NamedConsole } from "haxiomic-engine/NamedConsole";
-import { Spring } from "physics-animator/animators";
 import { PerspectiveCamera, Spherical, Vector2, Vector3 } from "three";
-
-const console = new NamedConsole("ShowcaseControls");
+import InteractionManager from "../interaction/InteractionManager.js";
+import { Spring } from "physics-animator/animators";
 
 /**
  * Simple orbit controls for showcasing a centered object, with orbit bounds, smooth dragging and multi-touch pinch zoom.
