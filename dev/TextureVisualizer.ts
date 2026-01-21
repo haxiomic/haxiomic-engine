@@ -1,5 +1,5 @@
 import { DoubleSide, LinearFilter, LinearMipMapLinearFilter, MathUtils, Mesh, MeshBasicMaterial, Object3D, PlaneGeometry, RepeatWrapping, ShaderMaterialParameters, Texture, Uniform } from "three";
-import { Layer } from "../Layer.js";
+import { Layer } from "../rendering/Layer.js";
 import { RGBASwizzle } from "../materials/Swizzle.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 import { DualRenderTarget } from "../rendering/DualRenderTarget.js";

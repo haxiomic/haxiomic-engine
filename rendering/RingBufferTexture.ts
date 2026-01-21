@@ -12,7 +12,7 @@ import {
     UVMapping,
     WebGLRenderer
 } from "three";
-import { getChannelCount, getTypedArrayConstructor, normalizedToTextureValue, TextureDataTypeToArray, TextureDataTypeToConstructor } from "../TextureUtils.js";
+import { getChannelCount, getTypedArrayConstructor, normalizedToTextureValue, TextureDataTypeToArray, TextureDataTypeToConstructor } from "../utils/TextureUtils.js";
 import { mod } from "../math/Math.js";
 
 export type RingBufferTextureOptions<T extends TextureDataType = TextureDataType> = {

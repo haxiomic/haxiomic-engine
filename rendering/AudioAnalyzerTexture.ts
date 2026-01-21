@@ -7,7 +7,7 @@ import {
     UnsignedByteType
 } from "three";
 import { AudioAnalyzerData } from "../audio/AudioAnalyzer.js";
-import { normalizedToTextureValue, TextureDataTypeToArray } from "../TextureUtils.js";
+import { normalizedToTextureValue, TextureDataTypeToArray } from "../utils/TextureUtils.js";
 import { RingBufferTexture } from "./RingBufferTexture.js";
 
 export type AudioAnalyzerTextureOptions<T extends TextureDataType = TextureDataType> = {

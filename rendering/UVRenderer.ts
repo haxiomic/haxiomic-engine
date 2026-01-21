@@ -1,6 +1,6 @@
 import { DoubleSide, HalfFloatType, Side, TextureDataType, WebGLRenderer } from "three";
 import { WorldPositionRenderer } from "./WorldPositionRenderer.js";
-import { Layer as RenderLayer } from '../Layer.js';
+import { Layer as RenderLayer } from './Layer.js';
 
 export class UVRenderer extends WorldPositionRenderer {
 

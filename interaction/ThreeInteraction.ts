@@ -1,7 +1,7 @@
 import { Camera, Intersection, Object3D, Object3DEventMap, Ray, Raycaster, Scene, Vector2 } from "three"
 import { EventSignal } from "@haxiomic/event-signal";
 import InteractionManager from "./InteractionManager.js";
-import { Layer } from "../Layer.js";
+import { Layer } from "../rendering/Layer.js";
 
 export type PointerEventExtended = EventSignal.Emitted<PointerEvent>;
 

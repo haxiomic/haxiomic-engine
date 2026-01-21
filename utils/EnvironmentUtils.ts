@@ -1,4 +1,4 @@
-import { PMREMGenerator, Scene, Texture, WebGLRenderer } from "three";
+import { PMREMGenerator, Texture, WebGLRenderer } from "three";
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
 
 export function loadEnvironment(renderer: WebGLRenderer, path: string): Promise<Texture> {
