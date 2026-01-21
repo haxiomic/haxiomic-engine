@@ -7,56 +7,21 @@ export enum OrthoPerspectiveCameraMode {
 
 /**
  * A camera that smoothly interpolates between perspective and orthographic projection.
- *
- * Extends PerspectiveCamera to maintain compatibility with Three.js utilities that
- * check `isPerspectiveCamera` (like OrbitControls, PhysicallyBasedViewer, etc.).
- *
- * ## Properties
- *
- * **`projectionBlend`** (0 to 1, default: 1)
- * - `1.0` = perspective projection (objects farther away appear smaller)
- * - `0.0` = orthographic projection (no perspective distortion)
- * - Intermediate values blend smoothly between the two
- *
- * **`focus`** (inherited from PerspectiveCamera, default: 10)
- * - The reference distance used to calculate orthographic frustum bounds
- * - At this distance, objects appear the same size in both perspective and ortho modes
- * - When camera distance equals `focus`, no internal zoom correction is applied
- *
- * **`zoom`** (inherited from PerspectiveCamera, default: 1)
- * - Works as expected - multiplies the effective focal length
- * - Increase to make objects appear larger, decrease to make them smaller
- *
- * ## Distance Scaling Behavior
- *
- * Objects scale with camera distance at ALL `projectionBlend` values. Dollying the
- * camera in/out produces consistent scaling whether in perspective, ortho, or between.
- * This matches the expected behavior of a PerspectiveCamera. For true orthographic
- * projection where distance doesn't affect size, use Three.js OrthographicCamera.
- *
- * ## Camera Type Detection
- *
- * `isPerspectiveCamera` and `isOrthographicCamera` return values based on `projectionBlend`:
- * - `projectionBlend >= 0.0`: `isPerspectiveCamera = true`, `isOrthographicCamera = false`
- * - `projectionBlend < 0.0`: `isPerspectiveCamera = false`, `isOrthographicCamera = true`
- *
- * This allows shaders and Three.js utilities to adapt their behavior accordingly.
- *
- * ## Automatic Updates
- *
- * The projection matrix updates automatically when the camera position changes
- * (detected via `updateMatrixWorld` which Three.js calls before rendering).
- * Call `updateProjectionMatrix()` manually only after changing camera properties
- * like `projectionBlend`, `focus`, `fov`, or `zoom`.
+ * 
+ * Can be thought of as a PerspectiveCamera that can transition to orthographic projection
+ * 
+ * .projectionBlend = 1.0 is pure perspective projection
+ * .projectionBlend = 0.0 is pure orthographic projection,
+ * 
+ * Set .focus to define the distance at which objects appear the same size in both modes.
  *
  * @example
  * ```typescript
  * const camera = new OrthoPerspectiveCamera(50, aspect, 0.1, 100);
+ * camera.projectionBlend = 0.5; // Blend halfway between perspective and orthographic
  * camera.position.z = 5;
- * camera.focus = 5; // Match initial camera distance
- * camera.projectionBlend = 0.5;
+ * camera.focus = camera.position.z;
  * camera.updateProjectionMatrix(); // Call after changing properties
- * // Position changes are handled automatically
  * ```
  */
 export class OrthoPerspectiveCamera extends PerspectiveCamera {
@@ -109,7 +74,7 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
         // Orthographic half-extents sized to match perspective view at focus distance
         // At focus distance, perspective visible half-height = focus * tan(fov/2) / zoom = focus / focalLength
         // This makes objects at focus distance appear the same size in both projection modes
-        const focusDistance = Math.max(0.0001, this.focus);
+        const focusDistance = Math.max(0.000001, this.focus);
         const orthoHeight = focusDistance / focalLength;
         const orthoWidth = orthoHeight * this.aspect;
 
