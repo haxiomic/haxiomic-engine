@@ -1,4 +1,4 @@
-import { Camera, OrthographicCamera, PerspectiveCamera, Raycaster, Vector2, Vector3 } from 'three';
+import { type Camera, OrthographicCamera, PerspectiveCamera, Raycaster, type Vector2, Vector3 } from 'three';
 
 export enum OrthoPerspectiveCameraMode {
     Orthographic = 0,
@@ -71,9 +71,9 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
      * - 0.0 = pure orthographic projection
      * - Values in between give a smooth blend
      */
-    projectionBlend: number = 1.0;
+    projectionBlend = 1.0;
 
-    constructor(fov?: number, aspect?: number, near?: number, far?: number, projectionBlend: OrthoPerspectiveCameraMode | number = OrthoPerspectiveCameraMode.Perspective, focus: number = 10) {
+    constructor(fov?: number, aspect?: number, near?: number, far?: number, projectionBlend: OrthoPerspectiveCameraMode | number = OrthoPerspectiveCameraMode.Perspective, focus = 10) {
         super(fov, aspect, near, far);
 
         this.projectionBlend = projectionBlend;
@@ -198,7 +198,7 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
      * @param orthoCamera The orthographic camera to copy from
      * @param fov Optional FOV to use (default: 50). Only affects perspective mode.
      */
-    fromOrthographicCamera(orthoCamera: OrthographicCamera, fov: number = 50): this {
+    fromOrthographicCamera(orthoCamera: OrthographicCamera, fov = 50): this {
         // Copy transform
         this.position.copy(orthoCamera.position);
         this.quaternion.copy(orthoCamera.quaternion);
@@ -270,6 +270,10 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
     }
 }
 
+// Reusable vectors for raycaster setup (avoid allocations per call)
+const _rayNear = new Vector3();
+const _rayFar = new Vector3();
+
 /**
  * Universal raycaster setup using two-point unprojection.
  * Works correctly for ANY camera type (perspective, orthographic, or hybrid)
@@ -290,17 +294,68 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
  * For scene intersection, results are identical. For distance-based filtering,
  * be aware that distances are measured from the near plane, not camera position.
  *
+ * **Important:** For reversed depth buffers, NDC z ranges from 1 (near) to 0 (far),
+ * not the standard -1 (near) to 1 (far). This function detects reversed depth
+ * and uses the correct NDC z values for unprojection.
+ *
  * @param raycaster The raycaster to configure
  * @param coords NDC coordinates (-1 to 1)
  * @param camera Any Three.js camera
  */
 export function setRaycasterFromCamera(raycaster: Raycaster, coords: Vector2, camera: Camera): void {
+    // Determine NDC z values based on depth buffer configuration
+    // Standard depth: z_ndc in [-1, 1] with -1 at near, 1 at far
+    // Reversed depth: z_ndc in [0, 1] with 1 at near, 0 at far
+    const isReversedDepth = (camera as { reversedDepth?: boolean }).reversedDepth === true;
+    const zNear = isReversedDepth ? 1 : -1;
+    const zFar = isReversedDepth ? 0 : 1;
+
     // Unproject two points at different Z depths in NDC space
     // This works for ANY projection type because it's pure matrix math
-    const near = new Vector3(coords.x, coords.y, -1).unproject(camera);
-    const far = new Vector3(coords.x, coords.y, 1).unproject(camera);
+    _rayNear.set(coords.x, coords.y, zNear).unproject(camera);
+    _rayFar.set(coords.x, coords.y, zFar).unproject(camera);
 
-    raycaster.ray.origin.copy(near);
-    raycaster.ray.direction.copy(far).sub(near).normalize();
+    raycaster.ray.origin.copy(_rayNear);
+    raycaster.ray.direction.copy(_rayFar).sub(_rayNear).normalize();
     raycaster.camera = camera;
 }
+
+/**
+ * Patches Three.js Raycaster.prototype.setFromCamera to use two-point unprojection.
+ *
+ * Three.js's default implementation checks camera.isPerspectiveCamera and camera.isOrthographicCamera
+ * to determine ray setup. This fails for OrthoPerspectiveCamera which reports isPerspectiveCamera=true
+ * always (for CameraControls compatibility) but may be in orthographic projection mode.
+ *
+ * The two-point unprojection method works correctly for ANY camera type (perspective, orthographic,
+ * or hybrid) because it relies purely on the camera's projection matrix inverse.
+ *
+ * **Important:** For reversed depth buffers, NDC z ranges from 1 (near) to 0 (far),
+ * not the standard -1 (near) to 1 (far). This patch detects reversed depth and uses
+ * the correct NDC z values for unprojection.
+ *
+ * This patch is applied automatically when this module is imported.
+ */
+export function patchRaycasterSetFromCamera(): void {
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const originalSetFromCamera = Raycaster.prototype.setFromCamera;
+
+    // Only patch once
+    if ((originalSetFromCamera as { __patched?: boolean }).__patched) return;
+
+    Raycaster.prototype.setFromCamera = function (this: Raycaster, coords: Vector2, camera: Camera) {
+        if ((camera as OrthoPerspectiveCamera).isHybridCamera) {
+            // Use universal two-point unprojection for hybrid cameras
+            setRaycasterFromCamera(this, coords, camera);
+        } else {
+            // Use original implementation for standard cameras
+            originalSetFromCamera.call(this, coords, camera);
+        }
+    };
+
+    // Mark as patched
+    (Raycaster.prototype.setFromCamera as { __patched?: boolean }).__patched = true;
+}
+
+// Auto-apply the patch when this module is loaded
+patchRaycasterSetFromCamera();
