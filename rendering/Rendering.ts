@@ -1,4 +1,4 @@
-import { Camera, Color, ColorRepresentation, IUniform, Layers, Material, Mesh, NoToneMapping, Object3D, OrthographicCamera, Scene, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
+import { Camera, Color, ColorRepresentation, ColorSpace, IUniform, Layers, Material, Mesh, NoToneMapping, Object3D, OrthographicCamera, PixelFormat, Scene, Texture, ToneMapping, Vector4, WebGLRenderer, WebGLRenderTarget } from "three";
 import { CopyMaterial, RawCopyMaterial } from "../materials/CopyMaterial.js";
 import { RawShaderMaterial } from "../materials/RawShaderMaterial.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
@@ -401,6 +401,38 @@ export namespace Rendering {
 		let webglTexture = (renderer.properties.get(texture) as any).__webglTexture;
 		renderer.state.bindTexture(gl.TEXTURE_2D, webglTexture);
 		gl.generateMipmap(gl.TEXTURE_2D);
+	}
+
+	export function resizeTexture2D(renderer: WebGLRenderer, texture: Texture, width: number, height: number): WebGLTexture {
+		const resizedTarget = new WebGLRenderTarget(
+			width,
+			height,
+			{
+				colorSpace: texture.colorSpace as ColorSpace | undefined,
+				generateMipmaps: texture.generateMipmaps,
+				magFilter: texture.magFilter,
+				minFilter: texture.minFilter,
+				wrapS: texture.wrapS,
+				wrapT: texture.wrapT,
+				type: texture.type,
+				anisotropy: texture.anisotropy,
+				flipY: texture.flipY,
+				format: texture.format as PixelFormat | undefined,
+				mapping: texture.mapping,
+			}
+		);
+
+		resizedTarget.texture.image = texture.image;
+		resizedTarget.texture.userData = structuredClone(texture.userData);
+
+		Rendering.blit(renderer, {
+			source: texture,
+			target: resizedTarget,
+			restoreGlobalState: true,
+			applyOutputColorSpace: false,
+		});
+
+		return resizedTarget.texture;
 	}
 
 	/**
