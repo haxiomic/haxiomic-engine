@@ -1,4 +1,4 @@
-import { type Camera, OrthographicCamera, PerspectiveCamera, Raycaster, type Vector2, Vector3 } from 'three';
+import { type Camera, OrthographicCamera, PerspectiveCamera, Raycaster, ShaderChunk, type Vector2, Vector3 } from 'three';
 
 export enum OrthoPerspectiveCameraMode {
     Orthographic = 0,
@@ -233,6 +233,12 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
         const orthoCamera = new OrthographicCamera();
         return this.copyToOrthographicCamera(orthoCamera);
     }
+
+    static {
+        // auto-apply the patch when this module is loaded
+        patchRaycasterSetFromCamera();
+        patchSmoothViewDirectionForOrthoPerspectiveCamera();
+    }
 }
 
 // Reusable vectors for raycaster setup (avoid allocations per call)
@@ -322,5 +328,48 @@ export function patchRaycasterSetFromCamera(): void {
     (Raycaster.prototype.setFromCamera as { __patched?: boolean }).__patched = true;
 }
 
-// Auto-apply the patch when this module is loaded
-patchRaycasterSetFromCamera();
+
+/**
+ * Patch Three.js shader chunks to use smooth view direction interpolation
+ * instead of binary isOrthographic switch.
+ *
+ * Uses projectionMatrix[2][3] which equals -projectionBlend in our hybrid camera:
+ * - perspectiveFactor = 1.0 for perspective (use per-fragment view direction)
+ * - perspectiveFactor = 0.0 for orthographic (use constant forward direction)
+ */
+function patchSmoothViewDirectionForOrthoPerspectiveCamera() {
+    const patchHeader = '// SMOOTH_VIEW_DIR //';
+    if (ShaderChunk.common.includes(patchHeader)) {
+        return; // already patched
+    }
+
+    // 1. Add varying declaration to common chunk (included in both vertex and fragment)
+    ShaderChunk.common = ShaderChunk.common + /*glsl*/`
+        ${patchHeader}
+        varying float vPerspectiveFactor;
+    `;
+
+    // 2. Patch project_vertex to compute and set the varying
+    // projectionMatrix[2][3] = -1 for perspective, 0 for orthographic
+    // Our hybrid camera sets it to -projectionBlend
+    const projectVertexPatch = /*glsl*/`
+        ${patchHeader}
+        vPerspectiveFactor = clamp(-projectionMatrix[2][3], 0.0, 1.0);
+    `;
+    ShaderChunk.project_vertex = ShaderChunk.project_vertex + projectVertexPatch;
+
+    // 3. Patch lights_fragment_begin to use smooth interpolation
+    const originalLine = /*glsl*/`vec3 geometryViewDir = ( isOrthographic ) ? vec3( 0, 0, 1 ) : normalize( vViewPosition );`;
+    const patchedLine = /*glsl*/`
+        // Smooth view direction interpolation using vPerspectiveFactor from vertex shader
+        // vPerspectiveFactor: 1.0 = perspective, 0.0 = orthographic
+        vec3 geometryViewDir = normalize( mix( vec3( 0.0, 0.0, 1.0 ), normalize( vViewPosition ), vPerspectiveFactor ) );
+    `;
+
+    if (ShaderChunk.lights_fragment_begin.includes(originalLine)) {
+        ShaderChunk.lights_fragment_begin = ShaderChunk.lights_fragment_begin.replace(originalLine, patchedLine);
+        console.log('Patched shaders for smooth view direction interpolation');
+    } else {
+        console.warn('Could not find expected line in lights_fragment_begin to patch');
+    }
+}
