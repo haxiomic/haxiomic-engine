@@ -412,7 +412,7 @@ export namespace Rendering {
 	 * copy a 2D texture by rendering it to a new render target of the desired size
 	 * The original is unchanged
 	 */
-	export function copyAndResizeTexture2D(renderer: WebGLRenderer, options: ResizeTexture2DOptions): WebGLTexture {
+	export function copyAndResizeTexture2D(renderer: WebGLRenderer, options: ResizeTexture2DOptions): Texture {
 		const { source: texture, width, height } = options;
 		const resizedTarget = new WebGLRenderTarget(
 			width ?? texture.width,
