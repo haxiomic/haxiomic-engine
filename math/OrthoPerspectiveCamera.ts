@@ -198,7 +198,7 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
      * @param orthoCamera The orthographic camera to copy from
      * @param fov Optional FOV to use (default: 50). Only affects perspective mode.
      */
-    fromOrthographicCamera(orthoCamera: OrthographicCamera, fov = 50): this {
+    setFromOrthographicCamera(orthoCamera: OrthographicCamera, fov = 50): this {
         // Copy transform
         this.position.copy(orthoCamera.position);
         this.quaternion.copy(orthoCamera.quaternion);
@@ -234,7 +234,7 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
      *
      * @param orthoCamera The orthographic camera to copy to
      */
-    toOrthographicCamera(orthoCamera: OrthographicCamera): OrthographicCamera {
+    copyToOrthographicCamera(orthoCamera: OrthographicCamera): OrthographicCamera {
         // Copy transform
         orthoCamera.position.copy(this.position);
         orthoCamera.quaternion.copy(this.quaternion);
@@ -266,7 +266,7 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
      */
     createOrthographicCamera(): OrthographicCamera {
         const orthoCamera = new OrthographicCamera();
-        return this.toOrthographicCamera(orthoCamera);
+        return this.copyToOrthographicCamera(orthoCamera);
     }
 }
 
