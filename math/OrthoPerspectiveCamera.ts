@@ -368,7 +368,6 @@ function patchSmoothViewDirectionForOrthoPerspectiveCamera() {
 
     if (ShaderChunk.lights_fragment_begin.includes(originalLine)) {
         ShaderChunk.lights_fragment_begin = ShaderChunk.lights_fragment_begin.replace(originalLine, patchedLine);
-        console.log('Patched shaders for smooth view direction interpolation');
     } else {
         console.warn('Could not find expected line in lights_fragment_begin to patch');
     }
