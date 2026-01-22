@@ -107,23 +107,30 @@ export namespace Console {
 	}
 
 	export function getCallerInfo(error: Error) {
-		if (error.stack != null) {
-			// get the line that called debug
-			let lines = error.stack.split('\n');
-			let line = lines[2];
-			let match = line.match(/at\s+(.*)\s+\((.*):(\d+):\d+\)/);
-			let functionName = match?.[1] ?? null;
-			let filepath = match?.[2] ?? null;
-			let filename = filepath?.split(/[/\\]/).pop() ?? null;
-			let lineNumber = match != null ? parseInt(match[3]) : null;
+		try {
+			if (error.stack != null) {
+				// get the line that called debug
+				let lines = error.stack.split('\n');
+				let line = lines[2];
+				if (line == null) {
+					return null;
+				}
+				let match = line.match(/at\s+(.*)\s+\((.*):(\d+):\d+\)/);
+				let functionName = match?.[1] ?? null;
+				let filepath = match?.[2] ?? null;
+				let filename = filepath?.split(/[/\\]/).pop() ?? null;
+				let lineNumber = match != null ? parseInt(match[3]) : null;
 
-			return {
-				functionName,
-				filepath,
-				filename,
-				lineNumber,
+				return {
+					functionName,
+					filepath,
+					filename,
+					lineNumber,
+				}
+			} else {
+				return null;
 			}
-		} else {
+		} catch {
 			return null;
 		}
 	}
