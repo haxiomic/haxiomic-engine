@@ -67,9 +67,8 @@ export class NamedConsole {
 
 		const namedPrefix = this.prefix ? [`<${this.color}>[${this.prefix}]<//> `] : [];
 		const errorPrefix = Console.errorPrefix;
-
-		let errorStack = new Error();
-		let callerInfo = Console.getCallerInfo(errorStack);
+		
+		let callerInfo = Console.getCallerInfo(this.error);
 
 		if (callerInfo != null) {
 			let callerPrefix = Console.callerInfoPrefix(callerInfo);
@@ -124,8 +123,7 @@ export class NamedConsole {
 		if (!emitDebug) return;
 
 		// get stack trace
-		let errorStack = new Error();
-		let callerInfo = Console.getCallerInfo(errorStack);
+		let callerInfo = Console.getCallerInfo(this.debug);
 
 		if (callerInfo != null) {
 			let callerPrefix = Console.callerInfoPrefix(callerInfo);
