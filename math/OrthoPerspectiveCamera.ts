@@ -25,7 +25,7 @@ export enum OrthoPerspectiveCameraMode {
  * ```
  */
 export class OrthoPerspectiveCamera extends PerspectiveCamera {
-    readonly isHybridCamera = true;
+    readonly isOrthoProjectiveCamera = true;
 
     static Orthographic = 0;
     static Perspective = 1;
@@ -145,7 +145,7 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
     override copy(source: PerspectiveCamera | OrthoPerspectiveCamera, recursive?: boolean): this {
         super.copy(source, recursive);
 
-        if ((source as OrthoPerspectiveCamera).isHybridCamera) {
+        if ((source as OrthoPerspectiveCamera).isOrthoProjectiveCamera) {
             this.projectionBlend = (source as OrthoPerspectiveCamera).projectionBlend;
         }
 
@@ -320,7 +320,7 @@ export function patchRaycasterSetFromCamera(): void {
     if ((originalSetFromCamera as { __patched?: boolean }).__patched) return;
 
     Raycaster.prototype.setFromCamera = function (this: Raycaster, coords: Vector2, camera: Camera) {
-        if ((camera as OrthoPerspectiveCamera).isHybridCamera) {
+        if ((camera as OrthoPerspectiveCamera).isOrthoProjectiveCamera) {
             // Use universal two-point unprojection for hybrid cameras
             setRaycasterFromCamera(this, coords, camera);
         } else {
