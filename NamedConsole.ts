@@ -75,7 +75,7 @@ export class NamedConsole {
 			// print debug message
 			Console.printlnArgsFormatted([
 					...namedPrefix,
-					errorPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					(callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
 					...args
 				],
 				Console.OutputStream.Error
@@ -130,7 +130,7 @@ export class NamedConsole {
 			// print debug message
 			Console.printlnArgsFormatted([
 					...namedPrefix,
-					debugPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					(callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
 					...args
 				],
 				OutputStream.Debug

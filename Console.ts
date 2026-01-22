@@ -459,7 +459,7 @@ export namespace Console {
 		ASCII_LIGHT_WHITE_CODE = 15,
 	}
 
-	function getAsciiFormat(flag: FormatFlag): string {flag
+	function getAsciiFormat(flag: FormatFlag): string {
 		// custom hex color
 		if (flag.charAt(0) === '#') {
 			const hex = flag.slice(1);
@@ -674,34 +674,49 @@ export namespace Console {
 		const skipFn = isSkipFn ? skip : getCallerInfo;
 
 		// Try V8 CallSite API first (Node.js, Chrome, Edge)
-		const callsites = getV8CallSites(skipFn);
-		if (callsites) {
+		// Wrapped in try/catch to ensure we never throw
+		try {
+			const callsites = getV8CallSites(skipFn);
+			if (callsites && callsites.length > frameIndex) {
 				const site = callsites[frameIndex];
-				if (!site) return null;
-
-				const filepath = site.getFileName() ?? null;
-				return {
-						functionName: site.getFunctionName() ?? site.getMethodName() ?? null,
+				// Verify this is actually a V8 CallSite object
+				if (site && typeof site.getFileName === 'function') {
+					const filepath = site.getFileName() ?? null;
+					return {
+						functionName: site.getFunctionName?.() ?? site.getMethodName?.() ?? null,
 						filepath,
 						filename: filepath?.split(/[/\\]/).pop()?.split('?')[0] ?? null,
-						lineNumber: site.getLineNumber() ?? null,
-						columnNumber: site.getColumnNumber() ?? null,
-				};
+						lineNumber: site.getLineNumber?.() ?? null,
+						columnNumber: site.getColumnNumber?.() ?? null,
+					};
+				}
+			}
+		} catch {
+			// V8 API failed, fall through to string parsing
 		}
 
-		// Fallback: parse stack string (Firefox/Safari)
-		const error = new Error();
-		// +1 to skip getCallerInfo itself, +1 more if skipping by function
-		const stackOffset = isSkipFn ? frameIndex + 2 : frameIndex + 1;
-		return parseStackFrame(error.stack, stackOffset);
+		// Fallback: parse stack string (Firefox/Safari/fallback)
+		try {
+			const error = new Error();
+			// +1 to skip getCallerInfo itself, +1 more if skipping by function
+			const stackOffset = isSkipFn ? frameIndex + 2 : frameIndex + 1;
+			return parseStackFrame(error.stack, stackOffset);
+		} catch {
+			return null;
+		}
 	}
 
 	/**
 	* Parses caller info from an existing Error's stack trace.
 	* Use this when you already have an Error object.
+	* Never throws - returns null on any error.
 	*/
 	export function getCallerInfoFromError(error: Error, frameIndex: number = 0): CallerInfo | null {
-		return parseStackFrame(error.stack, frameIndex);
+		try {
+			return parseStackFrame(error?.stack, frameIndex);
+		} catch {
+			return null;
+		}
 	}
 
 	// V8 CallSite interface (subset of methods we use)
@@ -715,76 +730,86 @@ export namespace Console {
 
 	/**
 	* Captures V8 CallSites using Error.prepareStackTrace.
-	* Returns null in non-V8 environments.
+	* Returns null in non-V8 environments or on any error.
 	* 
 	* @param belowFn - Function to start capturing below (excludes this function and above)
 	*/
 	function getV8CallSites(belowFn?: Function): CallSite[] | null {
+		// Quick check for V8 environment
 		const ErrorConstructor = Error as any;
 		if (typeof ErrorConstructor.captureStackTrace !== 'function') {
-				return null;
+			return null;
 		}
 
-		const original = ErrorConstructor.prepareStackTrace;
-		let callsites: CallSite[] | null = null;
+		try {
+			const original = ErrorConstructor.prepareStackTrace;
+			let callsites: CallSite[] | null = null;
 
-		ErrorConstructor.prepareStackTrace = (_: Error, stack: CallSite[]) => stack;
+			ErrorConstructor.prepareStackTrace = (_: Error, stack: CallSite[]) => stack;
 
-		const obj: { stack?: CallSite[] } = {};
-		ErrorConstructor.captureStackTrace(obj, belowFn ?? getV8CallSites);
-		callsites = obj.stack ?? null;
+			const obj: { stack?: CallSite[] } = {};
+			ErrorConstructor.captureStackTrace(obj, belowFn ?? getV8CallSites);
+			callsites = obj.stack ?? null;
 
-		ErrorConstructor.prepareStackTrace = original;
-		return callsites;
+			ErrorConstructor.prepareStackTrace = original;
+			return callsites;
+		} catch {
+			return null;
+		}
 	}
 
 	/**
 	* Parses a single frame from a stack trace string.
 	* Handles both V8 and Firefox/Safari formats.
+	* Never throws - returns null on any error.
 	*/
 	function parseStackFrame(stack: string | undefined, frameIndex: number): CallerInfo | null {
-		if (!stack) return null;
+		try {
+			if (!stack) return null;
 
-		// Filter to lines with :line:col pattern
-		const frames = stack.split('\n').filter(line => /:\d+:\d+/.test(line));
-		const line = frames[frameIndex];
-		if (!line) return null;
+			// Filter to lines with :line:col pattern
+			const frames = stack.split('\n').filter(line => /:\d+:\d+/.test(line));
+			const line = frames[frameIndex];
+			if (!line) return null;
 
-		// Extract line:col (universal across all formats)
-		const locMatch = line.match(/:(\d+):(\d+)\)?[\s]*$/);
-		if (!locMatch) return null;
+			// Extract line:col (universal across all formats)
+			const locMatch = line.match(/:(\d+):(\d+)\)?[\s]*$/);
+			if (!locMatch) return null;
 
-		const lineNumber = parseInt(locMatch[1], 10);
-		const columnNumber = parseInt(locMatch[2], 10);
+			const lineNumber = parseInt(locMatch[1], 10);
+			const columnNumber = parseInt(locMatch[2], 10);
 
-		let functionName: string | null = null;
-		let filepath: string | null = null;
+			let functionName: string | null = null;
+			let filepath: string | null = null;
 
-		if (/^\s*at\s/.test(line)) {
+			if (/^\s*at\s/.test(line)) {
 				// V8: "at name (path:l:c)" or "at path:l:c"
 				const match = line.match(/^\s*at\s+(?:(.+?)\s+\()?(.+):\d+:\d+\)?\s*$/);
 				if (match) {
-						functionName = match[1]?.replace(/^(async|new)\s+/, '') || null;
-						filepath = match[2];
+					functionName = match[1]?.replace(/^(async|new)\s+/, '') || null;
+					filepath = match[2];
 				}
-		} else {
+			} else {
 				// Firefox/Safari: "name@path:l:c"
 				const atIdx = line.indexOf('@');
 				if (atIdx !== -1) {
-						functionName = line.slice(0, atIdx) || null;
-						filepath = line.slice(atIdx + 1).replace(/:\d+:\d+$/, '');
+					functionName = line.slice(0, atIdx) || null;
+					filepath = line.slice(atIdx + 1).replace(/:\d+:\d+$/, '');
 				}
-		}
+			}
 
-		if (!filepath) return null;
+			if (!filepath) return null;
 
-		return {
+			return {
 				functionName,
 				filepath,
 				filename: filepath.split(/[/\\]/).pop()?.split('?')[0] ?? null,
 				lineNumber,
 				columnNumber,
-		};
+			};
+		} catch {
+			return null;
+		}
 	}
 
 }
