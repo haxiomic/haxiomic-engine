@@ -66,7 +66,6 @@ export class NamedConsole {
 		if (this.logLevel < LogLevel.Error) return;
 
 		const namedPrefix = this.prefix ? [`<${this.color}>[${this.prefix}]<//> `] : [];
-		const errorPrefix = Console.errorPrefix;
 		
 		let callerInfo = Console.getCallerInfo(this.error);
 
@@ -74,8 +73,7 @@ export class NamedConsole {
 			let callerPrefix = Console.callerInfoPrefix(callerInfo);
 			// print debug message
 			Console.printlnArgsFormatted([
-					...namedPrefix,
-					(callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					...namedPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
 					...args
 				],
 				Console.OutputStream.Error
@@ -83,7 +81,6 @@ export class NamedConsole {
 		} else {
 			Console.printlnArgsFormatted([
 					...namedPrefix,
-					errorPrefix,
 					...args
 				],
 				Console.OutputStream.Error
@@ -115,7 +112,6 @@ export class NamedConsole {
 		const namedPrefix = this.prefix ? [`<${this.color}>[${this.prefix}]<//> `] : [];
 
 		const {
-			debugPrefix,
 			emitDebug,
 			OutputStream,
 		} = Console;
@@ -129,8 +125,7 @@ export class NamedConsole {
 			let callerPrefix = Console.callerInfoPrefix(callerInfo);
 			// print debug message
 			Console.printlnArgsFormatted([
-					...namedPrefix,
-					(callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					...namedPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
 					...args
 				],
 				OutputStream.Debug
@@ -138,7 +133,6 @@ export class NamedConsole {
 		} else {
 			Console.printlnArgsFormatted([
 					...namedPrefix,
-					debugPrefix,
 					...args
 				],
 				OutputStream.Debug
