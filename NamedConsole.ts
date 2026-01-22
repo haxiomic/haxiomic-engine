@@ -73,7 +73,8 @@ export class NamedConsole {
 			let callerPrefix = Console.callerInfoPrefix(callerInfo);
 			// print debug message
 			Console.printlnArgsFormatted([
-					...namedPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					...namedPrefix,
+					(callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
 					...args
 				],
 				Console.OutputStream.Error
@@ -125,7 +126,8 @@ export class NamedConsole {
 			let callerPrefix = Console.callerInfoPrefix(callerInfo);
 			// print debug message
 			Console.printlnArgsFormatted([
-					...namedPrefix + (callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
+					...namedPrefix,
+					(callerPrefix ? `<b>${callerPrefix}</b>: ` : ''),
 					...args
 				],
 				OutputStream.Debug
