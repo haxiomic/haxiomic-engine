@@ -676,9 +676,9 @@ export namespace Console {
 		// Try V8 CallSite API first (Node.js, Chrome, Edge)
 		// Wrapped in try/catch to ensure we never throw
 		try {
-			const callsites = getV8CallSites(skipFn);
-			if (callsites && callsites.length > frameIndex) {
-				const site = callsites[frameIndex];
+			const callSites = getV8CallSites(skipFn);
+			if (callSites && callSites.length > frameIndex) {
+				const site = callSites[frameIndex];
 				// Verify this is actually a V8 CallSite object
 				if (site && typeof site.getFileName === 'function') {
 					const filepath = site.getFileName() ?? null;
@@ -743,16 +743,16 @@ export namespace Console {
 
 		try {
 			const original = ErrorConstructor.prepareStackTrace;
-			let callsites: CallSite[] | null = null;
+			let callSites: CallSite[] | null = null;
 
 			ErrorConstructor.prepareStackTrace = (_: Error, stack: CallSite[]) => stack;
 
 			const obj: { stack?: CallSite[] } = {};
 			ErrorConstructor.captureStackTrace(obj, belowFn ?? getV8CallSites);
-			callsites = obj.stack ?? null;
+			callSites = obj.stack ?? null;
 
 			ErrorConstructor.prepareStackTrace = original;
-			return callsites;
+			return callSites;
 		} catch {
 			return null;
 		}
