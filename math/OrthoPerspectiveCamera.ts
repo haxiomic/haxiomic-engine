@@ -65,7 +65,12 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
         }
 
         // Clamp blend to valid range
-        const t = Math.max(0, Math.min(1, this.projectionBlend));
+        const s = Math.max(0, Math.min(1, this.projectionBlend));
+        const f = Math.max(0.000001, this.focus); // focus distance
+
+        // Perceptually linear blend
+        const t = s / (f * (1 - s) + s);
+
         const oneMinusT = 1 - t;
 
         const fovRad = this.fov * Math.PI / 180;
