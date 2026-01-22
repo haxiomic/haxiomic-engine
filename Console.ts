@@ -58,8 +58,8 @@ export namespace Console {
 	}
 
 	export function error(...args: any[]) {
-		let errorStack = new Error();
-		let callerInfo = getCallerInfo(errorStack);
+		// get stack trace
+		const callerInfo = getCallerInfo(error);
 
 		if (callerInfo != null) {
 			let callerPrefix = callerInfoPrefix(callerInfo);
@@ -89,8 +89,7 @@ export namespace Console {
 		if (!emitDebug) return;
 
 		// get stack trace
-		let errorStack = new Error();
-		let callerInfo = getCallerInfo(errorStack);
+		let callerInfo = getCallerInfo(debug);
 
 		if (callerInfo != null) {
 			let callerPrefix = callerInfoPrefix(callerInfo);
@@ -103,35 +102,6 @@ export namespace Console {
 			);
 		} else {
 			printlnArgsFormatted([debugPrefix, ...args], OutputStream.Debug);
-		}
-	}
-
-	export function getCallerInfo(error: Error) {
-		try {
-			if (error.stack != null) {
-				// get the line that called debug
-				let lines = error.stack.split('\n');
-				let line = lines[2];
-				if (line == null) {
-					return null;
-				}
-				let match = line.match(/at\s+(.*)\s+\((.*):(\d+):\d+\)/);
-				let functionName = match?.[1] ?? null;
-				let filepath = match?.[2] ?? null;
-				let filename = filepath?.split(/[/\\]/).pop() ?? null;
-				let lineNumber = match != null ? parseInt(match[3]) : null;
-
-				return {
-					functionName,
-					filepath,
-					filename,
-					lineNumber,
-				}
-			} else {
-				return null;
-			}
-		} catch {
-			return null;
 		}
 	}
 
@@ -674,8 +644,147 @@ export namespace Console {
 		}
 	}
 
-	function regexMap(pattern: RegExp, str: string, mapFn: (substring: string, ...args: Array<any>) => string): string {
-		return str.replace(pattern, mapFn);
+	export interface CallerInfo {
+		functionName: string | null;
+		filepath: string | null;
+		filename: string | null;
+		lineNumber: number | null;
+		columnNumber: number | null;
+	}
+
+	/**
+	* Captures caller info using V8's CallSite API when available,
+	* with string parsing fallback for Firefox/Safari.
+	* 
+	* @param skip - Frames to skip: number (0 = immediate caller) or function to skip past
+	* 
+	* @example
+	* // Get immediate caller
+	* getCallerInfo()
+	* 
+	* @example
+	* // Skip past current function (useful in logging utilities)
+	* function debug(...args: any[]) {
+	*   const caller = getCallerInfo(debug); // or getCallerInfo(1)
+	* }
+	*/
+	export function getCallerInfo(skip: number | Function = 0): CallerInfo | null {
+		const isSkipFn = typeof skip === 'function';
+		const frameIndex = isSkipFn ? 0 : skip;
+		const skipFn = isSkipFn ? skip : getCallerInfo;
+
+		// Try V8 CallSite API first (Node.js, Chrome, Edge)
+		const callsites = getV8CallSites(skipFn);
+		if (callsites) {
+				const site = callsites[frameIndex];
+				if (!site) return null;
+
+				const filepath = site.getFileName() ?? null;
+				return {
+						functionName: site.getFunctionName() ?? site.getMethodName() ?? null,
+						filepath,
+						filename: filepath?.split(/[/\\]/).pop()?.split('?')[0] ?? null,
+						lineNumber: site.getLineNumber() ?? null,
+						columnNumber: site.getColumnNumber() ?? null,
+				};
+		}
+
+		// Fallback: parse stack string (Firefox/Safari)
+		const error = new Error();
+		// +1 to skip getCallerInfo itself, +1 more if skipping by function
+		const stackOffset = isSkipFn ? frameIndex + 2 : frameIndex + 1;
+		return parseStackFrame(error.stack, stackOffset);
+	}
+
+	/**
+	* Parses caller info from an existing Error's stack trace.
+	* Use this when you already have an Error object.
+	*/
+	export function getCallerInfoFromError(error: Error, frameIndex: number = 0): CallerInfo | null {
+		return parseStackFrame(error.stack, frameIndex);
+	}
+
+	// V8 CallSite interface (subset of methods we use)
+	interface CallSite {
+		getFunctionName(): string | null;
+		getMethodName(): string | null;
+		getFileName(): string | null;
+		getLineNumber(): number | null;
+		getColumnNumber(): number | null;
+	}
+
+	/**
+	* Captures V8 CallSites using Error.prepareStackTrace.
+	* Returns null in non-V8 environments.
+	* 
+	* @param belowFn - Function to start capturing below (excludes this function and above)
+	*/
+	function getV8CallSites(belowFn?: Function): CallSite[] | null {
+		const ErrorConstructor = Error as any;
+		if (typeof ErrorConstructor.captureStackTrace !== 'function') {
+				return null;
+		}
+
+		const original = ErrorConstructor.prepareStackTrace;
+		let callsites: CallSite[] | null = null;
+
+		ErrorConstructor.prepareStackTrace = (_: Error, stack: CallSite[]) => stack;
+
+		const obj: { stack?: CallSite[] } = {};
+		ErrorConstructor.captureStackTrace(obj, belowFn ?? getV8CallSites);
+		callsites = obj.stack ?? null;
+
+		ErrorConstructor.prepareStackTrace = original;
+		return callsites;
+	}
+
+	/**
+	* Parses a single frame from a stack trace string.
+	* Handles both V8 and Firefox/Safari formats.
+	*/
+	function parseStackFrame(stack: string | undefined, frameIndex: number): CallerInfo | null {
+		if (!stack) return null;
+
+		// Filter to lines with :line:col pattern
+		const frames = stack.split('\n').filter(line => /:\d+:\d+/.test(line));
+		const line = frames[frameIndex];
+		if (!line) return null;
+
+		// Extract line:col (universal across all formats)
+		const locMatch = line.match(/:(\d+):(\d+)\)?[\s]*$/);
+		if (!locMatch) return null;
+
+		const lineNumber = parseInt(locMatch[1], 10);
+		const columnNumber = parseInt(locMatch[2], 10);
+
+		let functionName: string | null = null;
+		let filepath: string | null = null;
+
+		if (/^\s*at\s/.test(line)) {
+				// V8: "at name (path:l:c)" or "at path:l:c"
+				const match = line.match(/^\s*at\s+(?:(.+?)\s+\()?(.+):\d+:\d+\)?\s*$/);
+				if (match) {
+						functionName = match[1]?.replace(/^(async|new)\s+/, '') || null;
+						filepath = match[2];
+				}
+		} else {
+				// Firefox/Safari: "name@path:l:c"
+				const atIdx = line.indexOf('@');
+				if (atIdx !== -1) {
+						functionName = line.slice(0, atIdx) || null;
+						filepath = line.slice(atIdx + 1).replace(/:\d+:\d+$/, '');
+				}
+		}
+
+		if (!filepath) return null;
+
+		return {
+				functionName,
+				filepath,
+				filename: filepath.split(/[/\\]/).pop()?.split('?')[0] ?? null,
+				lineNumber,
+				columnNumber,
+		};
 	}
 
 }
