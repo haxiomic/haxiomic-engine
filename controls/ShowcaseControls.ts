@@ -1,6 +1,11 @@
-import { PerspectiveCamera, Spherical, Vector2, Vector3 } from "three";
+import { Spherical, Vector2, Vector3 } from "three";
 import InteractionManager from "../interaction/InteractionManager.js";
 import { Spring } from "physics-animator/animators";
+
+type CameraType = {
+    position: Vector3;
+    lookAt: (v: Vector3) => void;
+}
 
 /**
  * Simple orbit controls for showcasing a centered object, with orbit bounds, smooth dragging and multi-touch pinch zoom.
@@ -48,7 +53,7 @@ export class ShowcaseControls {
             initialRadius: number,
             initialTheta?: number,
             initialPhi?: number,
-            camera?: PerspectiveCamera,
+            camera?: CameraType,
         },
         options?: Partial<ShowcaseControlsSettings>,
     ) {
@@ -87,7 +92,7 @@ export class ShowcaseControls {
         }
     }
 
-    updateCamera(camera: PerspectiveCamera, dt_s: number) {
+    updateCamera(camera: CameraType, dt_s: number) {
         if (this.enabled) {
             this.physics.step(dt_s);
             camera.position.setFromSpherical(this.physics.animated.current);
