@@ -42,15 +42,33 @@ export class ShowcaseControls {
     private physics: ShowcaseControlsPhysics;
     private input: ShowcaseControlsInput;
 
-    constructor({ interactionManager, initialRadius }: { interactionManager: InteractionManager, initialRadius: number }, options?: Partial<ShowcaseControlsSettings>) {
+    constructor(
+        { interactionManager, initialRadius, initialTheta, initialPhi, camera }: {
+            interactionManager: InteractionManager,
+            initialRadius: number,
+            initialTheta?: number,
+            initialPhi?: number,
+            camera?: PerspectiveCamera,
+        },
+        options?: Partial<ShowcaseControlsSettings>,
+    ) {
         // apply settings overrides
         this.settings = {
             ...this.settings,
             ...options,
         }
 
+        // Derive initial position from camera if provided, otherwise use explicit values
+        const initSpherical = camera
+            ? new Spherical().setFromVector3(camera.position)
+            : new Spherical(
+                initialRadius,
+                initialPhi ?? Math.PI / 2,
+                initialTheta ?? 0,
+            );
+
         // Create physics with an interaction callback (wired after input is created)
-        this.physics = new ShowcaseControlsPhysics(initialRadius, this.settings, () => this.input?.isCameraDragging() ?? false);
+        this.physics = new ShowcaseControlsPhysics(initSpherical, this.settings, () => this.input?.isCameraDragging() ?? false);
         this.input = new ShowcaseControlsInput(interactionManager, this.settings, this.physics.target, this.physics.animated);
 
         // expose methods
@@ -59,6 +77,9 @@ export class ShowcaseControls {
         this.isCameraDragging = this.input.isCameraDragging;
         this.isPinching = this.input.isPinching;
         this.setRadius = this.physics.setRadius;
+        this.setTheta = this.physics.setTheta;
+        this.setPhi = this.physics.setPhi;
+        this.setPosition = this.physics.setPosition;
 
         // trigger initial listeners
         if (this.enabled) {
@@ -74,8 +95,23 @@ export class ShowcaseControls {
         }
     }
 
+    /** Current animated radius (distance from center). Setting applies instantly. */
+    get radius() { return this.physics.animated.current.radius; }
+    set radius(value: number) { this.physics.setRadius(value, "instant"); }
+
+    /** Current animated theta (horizontal/longitudinal angle, -π to π). Setting applies instantly. */
+    get theta() { return this.physics.animated.current.theta; }
+    set theta(value: number) { this.physics.setTheta(value, "instant"); }
+
+    /** Current animated phi (vertical/latitudinal angle, 0 to π). Setting applies instantly. */
+    get phi() { return this.physics.animated.current.phi; }
+    set phi(value: number) { this.physics.setPhi(value, "instant"); }
+
     // NOTE: keeping these as function-valued properties (assigned in ctor) preserves prior binding semantics.
-    setRadius: (distance: number, animate: "animate" | "instant") => void;
+    setRadius: (radius: number, animate: "animate" | "instant") => void;
+    setTheta: (theta: number, animate: "animate" | "instant") => void;
+    setPhi: (phi: number, animate: "animate" | "instant") => void;
+    setPosition: (position: { radius?: number; theta?: number; phi?: number }, animate: "animate" | "instant") => void;
     isCameraDragging: () => boolean;
     isPinching: () => boolean;
 
@@ -118,25 +154,49 @@ class ShowcaseControlsPhysics {
     readonly animated: SphericalState;
 
     constructor(
-        initialRadius: number,
+        initialPosition: Spherical,
         private readonly settings: ShowcaseControlsSettings,
         private readonly isInteracting: () => boolean,
     ) {
         // initial camera state
-        this.target = new Spherical().setFromCartesianCoords(0, 0, initialRadius);
+        this.target = initialPosition.clone();
         this.animated = {
             current: this.target.clone(),
             velocity: new Spherical(0, 0, 0),
         };
     }
 
-    setRadius = (distance: number, animate: "animate" | "instant") => {
-        this.target.radius = distance;
+    setRadius = (radius: number, animate: "animate" | "instant") => {
+        this.target.radius = radius;
 
         if (animate === "instant") {
-            this.animated.current.radius = distance;
+            this.animated.current.radius = radius;
             this.animated.velocity.radius = 0;
         }
+    }
+
+    setTheta = (theta: number, animate: "animate" | "instant") => {
+        this.target.theta = theta;
+
+        if (animate === "instant") {
+            this.animated.current.theta = theta;
+            this.animated.velocity.theta = 0;
+        }
+    }
+
+    setPhi = (phi: number, animate: "animate" | "instant") => {
+        this.target.phi = phi;
+
+        if (animate === "instant") {
+            this.animated.current.phi = phi;
+            this.animated.velocity.phi = 0;
+        }
+    }
+
+    setPosition = (position: { radius?: number; theta?: number; phi?: number }, animate: "animate" | "instant") => {
+        if (position.radius !== undefined) this.setRadius(position.radius, animate);
+        if (position.theta !== undefined) this.setTheta(position.theta, animate);
+        if (position.phi !== undefined) this.setPhi(position.phi, animate);
     }
 
     step(dt_s: number) {
