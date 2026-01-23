@@ -205,6 +205,9 @@ class ShowcaseControlsPhysics {
     }
 
     step(dt_s: number) {
+        // clamp dt_s
+        dt_s = Math.min(Math.max(dt_s, 0), 0.1);
+
         let iterations = 5;
         dt_s /= iterations;
 
