@@ -61,6 +61,9 @@ export default class RenderTargetStore {
 	) {
 		let target = this.renderTargets[key];
 
+		width = Math.max(1, width);
+		height = Math.max(1, height);
+
 		// determine texture size
 		let textureWidth = 0;
 		let textureHeight = 0;
