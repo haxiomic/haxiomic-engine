@@ -15,15 +15,22 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
     bloomFalloff: Uniform<number>,
     minLod: Uniform<number>,
     maxLod?: Uniform<number>,
+    // Color grading uniforms (only used when colorGrading option is enabled)
+    colorGradeContrast?: Uniform<number>,
+    colorGradeSaturation?: Uniform<number>,
+    colorGradeExponent?: Uniform<number>,
 }> {
 
     bakeUniforms: boolean;
 
     constructor(options_?: {
         bakeUniforms?: boolean,
+        /** Enable color grading (contrast, saturation, exponent adjustments) */
+        colorGrading?: boolean,
     }) {
         const defaultOptions = {
             bakeUniforms: true,
+            colorGrading: false,
         }
         let options = { ...defaultOptions, ...options_ };
 
@@ -40,9 +47,14 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 bloomFalloff: new Uniform(-0.138),
                 minLod: new Uniform(1),
                 maxLod: new Uniform(0),
+                // Color grading uniforms (0 = no change)
+                colorGradeContrast: new Uniform(0.0),
+                colorGradeSaturation: new Uniform(0.0),
+                colorGradeExponent: new Uniform(0.0),
             },
             defines: {
                 BAKE_UNIFORMS: 0,
+                COLOR_GRADING: options.colorGrading ? 1 : 0,
                 // escape newlines
                 BLOOM_ACCUMULATION: dynamicBloomAccumulation,
             },
@@ -70,11 +82,30 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 uniform float minLod;
                 #endif
 
+                #if COLOR_GRADING
+                uniform float colorGradeContrast;
+                uniform float colorGradeSaturation;
+                uniform float colorGradeExponent;
+
+                const vec3 COLOR_GRADE_LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+                vec3 applyColorGrading(vec3 c) {
+                    // Contrast: expand/compress around 0.5
+                    c = (c - 0.5) * (colorGradeContrast + 1.0) + 0.5;
+                    // Saturation: mix between luminance and color
+                    float luma = dot(c, COLOR_GRADE_LUMA);
+                    c = mix(vec3(luma), c, colorGradeSaturation + 1.0);
+                    // Exponent: gamma-like adjustment
+                    c = pow(c, vec3(colorGradeExponent + 1.0));
+                    return c;
+                }
+                #endif
+
                 varying vec2 vUv;
 
                 #include <common>
                 #include <dithering_pars_fragment>
-                
+
                 void main() {
                     // mix in lods
                     vec4 lod0 = texture2D(source, vUv);
@@ -89,6 +120,11 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 
                     #include <tonemapping_fragment>
                     #include <colorspace_fragment>
+
+                    #if COLOR_GRADING
+                    gl_FragColor.rgb = applyColorGrading(gl_FragColor.rgb);
+                    #endif
+
                     #include <premultiplied_alpha_fragment>
                     #include <dithering_fragment>
                 }
