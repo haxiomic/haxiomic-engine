@@ -1,4 +1,12 @@
-import { type Camera, OrthographicCamera, PerspectiveCamera, Raycaster, ShaderChunk, type Vector2, Vector3 } from 'three';
+import {
+    type Camera,
+    OrthographicCamera,
+    PerspectiveCamera,
+    Raycaster,
+    ShaderChunk,
+    type Vector2,
+    Vector3,
+} from 'three';
 
 export enum OrthoPerspectiveCameraMode {
     Orthographic = 0,
@@ -7,12 +15,12 @@ export enum OrthoPerspectiveCameraMode {
 
 /**
  * A camera that smoothly interpolates between perspective and orthographic projection.
- * 
+ *
  * Can be thought of as a PerspectiveCamera that can transition to orthographic projection
- * 
+ *
  * .projectionBlend = 1.0 is pure perspective projection
  * .projectionBlend = 0.0 is pure orthographic projection,
- * 
+ *
  * Set .focus to define the distance at which objects appear the same size in both modes.
  *
  * @example
@@ -30,84 +38,203 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
     static Orthographic = 0;
     static Perspective = 1;
 
+    // Private backing fields for reactive properties
+    private _projectionBlend = OrthoPerspectiveCameraMode.Perspective;
+    private _focus = 10;
+
+    /**
+     * Distance to the focus plane. Controls the size of the orthographic frustum
+     * when projectionBlend < 1.0. Objects at this distance appear the same size
+     * in both perspective and orthographic modes.
+     *
+     * Automatically updates the projection matrix when changed.
+     *
+     * Note: This is defined via Object.defineProperty in constructor to override
+     * the inherited property from PerspectiveCamera with a reactive accessor.
+     */
+    declare focus: number;
+
     /**
      * Blend factor between projection types.
      * - 1.0 = pure perspective projection
      * - 0.0 = pure orthographic projection
      * - Values in between give a smooth blend
+     *
+     * Automatically updates the projection matrix when changed.
      */
-    projectionBlend = 1.0;
+    get projectionBlend(): number {
+        return this._projectionBlend;
+    }
 
-    constructor(fov?: number, aspect?: number, near?: number, far?: number, projectionBlend: OrthoPerspectiveCameraMode | number = OrthoPerspectiveCameraMode.Perspective, focus = 10) {
+    set projectionBlend(value: number) {
+        if (this._projectionBlend !== value) {
+            this._projectionBlend = value;
+            // Only auto-update after construction is complete.
+            // _constructing is undefined during super(), true after field init, false after constructor body.{
+            this.updateProjectionMatrix();
+        }
+    }
+
+    /**
+     * When true, the near plane position is relative to the frustum convergence point
+     * rather than the camera position. As projectionBlend approaches 0 (orthographic),
+     * the convergence point moves toward infinity, and the near plane follows.
+     *
+     * This allows geometry behind the camera position to be rendered in orthographic
+     * or near-orthographic modes.
+     *
+     * @default true
+     */
+    relativeNear = true;
+
+    /**
+     * When relativeNear is enabled, this limits how far behind the camera (in world units)
+     * the near plane can move. Prevents the near plane from going to infinity as
+     * projectionBlend approaches 0.
+     *
+     * If unset, -far is used as the limit.
+     *
+     * @default -this.far
+     */
+    relativeNearNegativeLimit: number | undefined = undefined;
+
+    /**
+     * Minimum clip-space W allowed at the near plane when relativeNear is enabled.
+     * Prevents the near plane from approaching the w=0 singularity during the blend
+     * (which can cause driver-dependent depth/clipping instability).
+     *
+     * 0 disables the stabilization (original behavior).
+     *
+     * Typical values: 1/1024 (~0.00098) to 1/256 (~0.0039)
+     */
+    relativeNearMinW = 1 / 512;
+
+    constructor(
+        fov?: number,
+        aspect?: number,
+        near?: number,
+        far?: number,
+        projectionBlend:
+            | OrthoPerspectiveCameraMode
+            | number = OrthoPerspectiveCameraMode.Perspective,
+        focus = 10
+    ) {
         super(fov, aspect, near, far);
 
-        this.projectionBlend = projectionBlend;
-        this.focus = focus;
+        // Set values directly to backing fields to avoid triggering updateProjectionMatrix
+        // during construction. The setters would skip anyway due to _constructing check,
+        // but this is more explicit and avoids the comparison overhead.
+        this._projectionBlend = projectionBlend;
+        this._focus = focus;
 
         // Override isPerspectiveCamera and isOrthographicCamera with dynamic getters
         // These are checked by Three.js shaders and utilities to determine camera behavior
         // Runtime override - TypeScript still sees inherited types but actual values are dynamic
         Object.defineProperty(this, 'isPerspectiveCamera', {
-            get: () => this.projectionBlend > 0.0,
+            get: () => true,
             configurable: true,
         });
         Object.defineProperty(this, 'isOrthographicCamera', {
-            get: () => this.projectionBlend <= 0.00,
+            get: () => false,
             configurable: true,
         });
+
+        // Override focus property with getter/setter that auto-updates projection matrix.
+        // This shadows the inherited property from PerspectiveCamera.
+        // Using Object.defineProperty because TypeScript doesn't allow class accessor to override property.
+        Object.defineProperty(this, 'focus', {
+            get: (): number => this._focus,
+            set: (value: number) => {
+                if (this._focus !== value) {
+                    this._focus = value;
+                    this.updateProjectionMatrix();
+                }
+            },
+            configurable: true,
+            enumerable: true,
+        });
+
+        this.updateProjectionMatrix();
     }
 
     override updateProjectionMatrix(): void {
-        // If pure perspective, use standard implementation for efficiency
-        if (this.projectionBlend >= 1.0) {
+        // Read from backing fields for safety during construction when getters may not work
+        const blend = this._projectionBlend;
+        const focusVal = this._focus;
+
+        // Safety: if values aren't valid numbers, use perspective fallback.
+        // This handles the case during super() constructor when fields are undefined.
+        if (
+            blend == null ||
+            focusVal == null ||
+            !Number.isFinite(blend) ||
+            !Number.isFinite(focusVal) ||
+            blend >= 1.0
+        ) {
+            // Pure perspective or invalid/uninitialized state - use standard implementation
             super.updateProjectionMatrix();
             return;
         }
 
         // Clamp blend to valid range
-        const s = Math.max(0, Math.min(1, this.projectionBlend));
-        const f = Math.max(0.000001, this.focus); // focus distance
+        const s = Math.max(0, Math.min(1, blend));
+        const f = Math.max(0.000001, focusVal);
 
-        // Perceptually linear blend
+        // Perceptually linear blend parameter
         const t = s / (f * (1 - s) + s);
-
         const oneMinusT = 1 - t;
 
-        const fovRad = this.fov * Math.PI / 180;
+        const fovRad = (this.fov * Math.PI) / 180;
         const focalLength = (1 / Math.tan(fovRad / 2)) * this.zoom;
 
         // Orthographic half-extents sized to match perspective view at focus distance
-        // At focus distance, perspective visible half-height = focus * tan(fov/2) / zoom = focus / focalLength
-        // This makes objects at focus distance appear the same size in both projection modes
-        const focusDistance = Math.max(0.000001, this.focus);
+        const focusDistance = f; // Already clamped above
         const orthoHeight = focusDistance / focalLength;
         const orthoWidth = orthoHeight * this.aspect;
 
-        // Depth mapping coefficients (matrix elements [10] and [14])
-        // These transform view-space Z to NDC Z with proper blending
-        //
-        // Standard depth (NDC z in [-1, 1], near→-1, far→1):
-        //   Perspective: c = -(far+near)/(far-near), d = -2*far*near/(far-near)
-        //   Orthographic: c = -2/(far-near), d = -(far+near)/(far-near)
-        //
-        // Reversed depth (NDC z in [0, 1], near→1, far→0):
-        //   Perspective: c = near/(far-near), d = far*near/(far-near)
-        //   Orthographic: c = 1/(far-near), d = far/(far-near)
-        //
-        const delta = this.far - this.near;
+        // Calculate effective near/far planes
+        let effectiveNear = this.near;
+
+        if (this.relativeNear) {
+            const zConvergence = t > 0 ? (1 - t) / t : Infinity;
+
+            // --- Stabilized relativeNear ---
+            // Original behavior effectively makes wNear = t * near (before negative-limit clamp),
+            // which can become tiny mid-transition and cause GPU-dependent clipping/depth issues.
+            // We ensure the near plane stays a minimum homogeneous distance away from the w=0 plane
+            // by increasing the offset from the convergence plane when needed.
+            const wMin = Math.max(0, this.relativeNearMinW ?? 0);
+            const tSafe = Math.max(t, 1e-9);
+
+            // Offset from convergence plane (world units). Original: offset = this.near.
+            // Stabilized: offset grows as 1/t to keep wNear ≳ wMin.
+            const offset = wMin > 0 ? Math.max(this.near, wMin / tSafe) : this.near;
+
+            effectiveNear = offset - zConvergence;
+
+            const minimumNegativeNear =
+                this.relativeNearNegativeLimit != null && isFinite(this.relativeNearNegativeLimit)
+                    ? -Math.abs(this.relativeNearNegativeLimit)
+                    : -Math.abs(this.far);
+
+            effectiveNear = Math.max(minimumNegativeNear, effectiveNear);
+        }
+
+        // Depth mapping coefficients
+        const delta = this.far - effectiveNear;
         let A: number;
         let B: number;
 
         if (this.reversedDepth) {
             // Blended reversed depth: A and B linearly interpolate between
             // perspective and orthographic reversed formulas
-            const blend = t * this.near + oneMinusT;
+            const blend = t * effectiveNear + oneMinusT;
             A = blend / delta;
-            B = this.far * blend / delta;
+            B = (this.far * blend) / delta;
         } else {
             // Blended standard depth
-            A = -(t * (this.far + this.near) + 2 * oneMinusT) / delta;
-            B = -t * this.near - 1 + t + this.near * A;
+            A = -(t * (this.far + effectiveNear) + 2 * oneMinusT) / delta;
+            B = -t * effectiveNear - 1 + t + effectiveNear * A;
         }
 
         const e = this.projectionMatrix.elements;
@@ -146,7 +273,15 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
         super.copy(source, recursive);
 
         if ((source as OrthoPerspectiveCamera).isOrthoProjectiveCamera) {
-            this.projectionBlend = (source as OrthoPerspectiveCamera).projectionBlend;
+            const orthoSource = source as OrthoPerspectiveCamera;
+            // Set backing fields directly to batch updates - avoids multiple updateProjectionMatrix calls
+            this._projectionBlend = orthoSource.projectionBlend;
+            this._focus = orthoSource.focus;
+            this.relativeNear = orthoSource.relativeNear;
+            this.relativeNearNegativeLimit = orthoSource.relativeNearNegativeLimit;
+            this.relativeNearMinW = orthoSource.relativeNearMinW;
+            // Single update with all new values
+            this.updateProjectionMatrix();
         }
 
         return this;
@@ -183,17 +318,18 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
         // So focus = orthoHeight * focalLength = orthoHeight / tan(fov/2) * zoom
         const orthoHeight = (orthoCamera.top - orthoCamera.bottom) / 2;
         const orthoWidth = (orthoCamera.right - orthoCamera.left) / 2;
-        const fovRad = fov * Math.PI / 180;
+        const fovRad = (fov * Math.PI) / 180;
         const focalLength = 1 / Math.tan(fovRad / 2);
 
         this.fov = fov;
         this.aspect = orthoWidth / orthoHeight;
         this.zoom = orthoCamera.zoom;
-        this.focus = orthoHeight * focalLength * this.zoom;
 
-        // Set to orthographic mode
-        this.projectionBlend = 0;
+        // Set backing fields directly to batch updates - avoids multiple updateProjectionMatrix calls
+        this._focus = orthoHeight * focalLength * this.zoom;
+        this._projectionBlend = OrthoPerspectiveCameraMode.Orthographic;
 
+        // Single update with all new values
         this.updateProjectionMatrix();
         return this;
     }
@@ -215,7 +351,7 @@ export class OrthoPerspectiveCamera extends PerspectiveCamera {
         orthoCamera.far = this.far;
 
         // Calculate ortho bounds from focus and fov
-        const fovRad = this.fov * Math.PI / 180;
+        const fovRad = (this.fov * Math.PI) / 180;
         const focalLength = (1 / Math.tan(fovRad / 2)) * this.zoom;
         const focusDistance = Math.max(0.0001, this.focus);
         const orthoHeight = focusDistance / focalLength;
@@ -278,7 +414,11 @@ const _rayFar = new Vector3();
  * @param coords NDC coordinates (-1 to 1)
  * @param camera Any Three.js camera
  */
-export function setRaycasterFromCamera(raycaster: Raycaster, coords: Vector2, camera: Camera): void {
+export function setRaycasterFromCamera(
+    raycaster: Raycaster,
+    coords: Vector2,
+    camera: Camera
+): void {
     // Determine NDC z values based on depth buffer configuration
     // Standard depth: z_ndc in [-1, 1] with -1 at near, 1 at far
     // Reversed depth: z_ndc in [0, 1] with 1 at near, 0 at far
@@ -294,6 +434,18 @@ export function setRaycasterFromCamera(raycaster: Raycaster, coords: Vector2, ca
     raycaster.ray.origin.copy(_rayNear);
     raycaster.ray.direction.copy(_rayFar).sub(_rayNear).normalize();
     raycaster.camera = camera;
+}
+
+/**
+ * Get the perspective factor from a camera's projection matrix.
+ * Works for any camera type: perspective, orthographic, or blended (OrthoPerspectiveCamera).
+ *
+ * @returns 1.0 for pure perspective, 0.0 for pure orthographic, values in between for blended
+ */
+export function getPerspectiveFactor(camera: Camera): number {
+    // projectionMatrix.elements[11] = -1 for perspective, 0 for orthographic,
+    // -projectionBlend for OrthoPerspectiveCamera
+    return Math.max(0, Math.min(1, -camera.projectionMatrix.elements[11]!));
 }
 
 /**
@@ -319,7 +471,11 @@ export function patchRaycasterSetFromCamera(): void {
     // Only patch once
     if ((originalSetFromCamera as { __patched?: boolean }).__patched) return;
 
-    Raycaster.prototype.setFromCamera = function (this: Raycaster, coords: Vector2, camera: Camera) {
+    Raycaster.prototype.setFromCamera = function (
+        this: Raycaster,
+        coords: Vector2,
+        camera: Camera
+    ) {
         if ((camera as OrthoPerspectiveCamera).isOrthoProjectiveCamera) {
             // Use universal two-point unprojection for hybrid cameras
             setRaycasterFromCamera(this, coords, camera);
@@ -332,7 +488,6 @@ export function patchRaycasterSetFromCamera(): void {
     // Mark as patched
     (Raycaster.prototype.setFromCamera as { __patched?: boolean }).__patched = true;
 }
-
 
 /**
  * Patch Three.js shader chunks to use smooth view direction interpolation
@@ -349,31 +504,41 @@ function patchSmoothViewDirectionForOrthoPerspectiveCamera() {
     }
 
     // 1. Add varying declaration to common chunk (included in both vertex and fragment)
-    ShaderChunk.common = ShaderChunk.common + /*glsl*/`
+    ShaderChunk.common =
+        ShaderChunk.common +
+        /* glsl */ `
         ${patchHeader}
         varying float vPerspectiveFactor;
+        #define PERSPECTIVE_FACTOR 1
     `;
 
     // 2. Patch project_vertex to compute and set the varying
     // projectionMatrix[2][3] = -1 for perspective, 0 for orthographic
     // Our hybrid camera sets it to -projectionBlend
-    const projectVertexPatch = /*glsl*/`
+    const projectVertexPatch = /* glsl */ `
         ${patchHeader}
         vPerspectiveFactor = clamp(-projectionMatrix[2][3], 0.0, 1.0);
     `;
     ShaderChunk.project_vertex = ShaderChunk.project_vertex + projectVertexPatch;
 
     // 3. Patch lights_fragment_begin to use smooth interpolation
-    const originalLine = /*glsl*/`vec3 geometryViewDir = ( isOrthographic ) ? vec3( 0, 0, 1 ) : normalize( vViewPosition );`;
-    const patchedLine = /*glsl*/`
+    const originalLine = /* glsl */ `vec3 geometryViewDir = ( isOrthographic ) ? vec3( 0, 0, 1 ) : normalize( vViewPosition );`;
+    const patchedLine = /* glsl */ `
         // Smooth view direction interpolation using vPerspectiveFactor from vertex shader
         // vPerspectiveFactor: 1.0 = perspective, 0.0 = orthographic
-        vec3 geometryViewDir = normalize( mix( vec3( 0.0, 0.0, 1.0 ), normalize( vViewPosition ), vPerspectiveFactor ) );
+        vec3 geometryViewDir = normalize( mix( vec3( 0.0, 0.0, 1.0 ), vViewPosition, vPerspectiveFactor ) );
     `;
 
     if (ShaderChunk.lights_fragment_begin.includes(originalLine)) {
-        ShaderChunk.lights_fragment_begin = ShaderChunk.lights_fragment_begin.replace(originalLine, patchedLine);
+        ShaderChunk.lights_fragment_begin = ShaderChunk.lights_fragment_begin.replace(
+            originalLine,
+            patchedLine
+        );
     } else {
         console.warn('Could not find expected line in lights_fragment_begin to patch');
     }
+}
+
+export function isOrthoPerspectiveCamera(camera: Camera): camera is OrthoPerspectiveCamera {
+    return (camera as OrthoPerspectiveCamera).isOrthoProjectiveCamera === true;
 }
