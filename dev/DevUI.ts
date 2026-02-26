@@ -217,6 +217,7 @@ export class DevUI {
 		if ('alphaHash' in material) materialFolder.add(material, 'alphaHash', 0, 1);
 		if ('metalness' in material) materialFolder.add(material, 'metalness', 0, 1);
 		if ('roughness' in material) materialFolder.add(material, 'roughness', 0, 1);
+		if ('emissive' in material) materialFolder.addColor(material, 'emissive');
 		if ('emissiveIntensity' in material) materialFolder.add(material, 'emissiveIntensity', 0, 4);
 		if ('envMapIntensity' in material) materialFolder.add(material, 'envMapIntensity', 0, 4);
 
