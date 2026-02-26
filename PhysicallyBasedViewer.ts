@@ -1,10 +1,7 @@
-import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, ArrayCamera, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, HalfFloatType, Layers, LinearToneMapping, Matrix4, NearestFilter, NoColorSpace, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, RGBAFormat, Scene, SRGBColorSpace, Texture, ToneMapping, Vector2, Vector3, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
+import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, ArrayCamera, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, Layers, LinearToneMapping, Matrix4, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, Scene, Texture, ToneMapping, Vector3, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { Console } from "./Console.js";
 import { DevUI } from "./dev/DevUI.js";
 import { EnvironmentProbes } from "./dev/EnvironmentProbes.js";
@@ -12,14 +9,21 @@ import { TextureVisualizer } from "./dev/TextureVisualizer.js";
 import InteractionManager from "./interaction/InteractionManager.js";
 import { ThreeInteraction } from "./interaction/ThreeInteraction.js";
 import { Layer } from "./rendering/Layer.js";
-import { ObjectUtils } from "./utils/ObjectUtils.js";
 import { Rendering } from "./rendering/Rendering.js";
 import RenderTargetStore from "./rendering/RenderTargetStore.js";
+import { ObjectUtils } from "./utils/ObjectUtils.js";
 // three js stats
+import { EventSignal } from "@haxiomic/event-signal";
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { TransformGizmo } from "./dev/TransformGizmo.js";
-import { EventSignal } from "@haxiomic/event-signal";
 
+/**
+ * WebGLRenderer boiler plate:
+ * - canvas resizing
+ * - interaction event management
+ * - environment map loading
+ * - render loop with frame update event and customizable render function
+ */
 export type PhysicallyBasedViewerOptions<Controls extends {
 	enabled?: boolean,
 	update?: (dt_s: number) => void,
@@ -32,14 +36,6 @@ export type PhysicallyBasedViewerOptions<Controls extends {
 	interactionManager?: InteractionManager,
 	defaultEnvironment?: boolean,
 	defaultLights?: boolean,
-	postProcessing?: {
-		enabled?: boolean,
-		bloom?: boolean,
-		bloomStrength?: number,
-		bloomRadius?: number,
-		bloomThreshold?: number,
-		msaaSamples?: number,
-	},
 	/** explicitly provide parameters to new WebGLRenderer */
 	webglRendererParameters?: WebGLRendererParameters,
 	toneMapping?: ToneMapping,
@@ -108,29 +104,12 @@ export class PhysicallyBasedViewer<
 	readonly interactionManager: InteractionManager;
 	readonly threeInteraction: ThreeInteraction;
 
-	// post processing
-	postProcessingEnabled = true;
-	readonly effectComposer: EffectComposer;
-	readonly effectsCompositorRenderPass: RenderPass;
-	readonly bloomPass: UnrealBloomPass;
-
 	readonly gltfLoader: GLTFLoader;
 	protected frameLoopHandle: number = -1;
 
 	protected fallbackAmbientLight = new AmbientLight(0xffffff, 2.0);
 
 	protected renderTargetStore = new RenderTargetStore();
-
-	get postProcessMsaaSamples() {
-		return this.effectComposerTarget.samples;
-	}
-	set postProcessMsaaSamples(samples: number) {
-		let samplesChanged = samples !== this.effectComposerTarget.samples;
-		if (!samplesChanged) return;
-		this.effectComposerTarget.samples = samples;
-		this.effectComposer.reset(this.effectComposerTarget);
-	}
-	protected effectComposerTarget: WebGLRenderTarget;
 
 	dev: {
 		root: Object3D,
@@ -145,7 +124,6 @@ export class PhysicallyBasedViewer<
 		this.name = options.name ?? 'PhysicallyBasedViewer';
 		this.logTag = `<magenta><b>${this.name}<//>`;
 		this.pixelRatio = options.pixelRatio ?? this.pixelRatio;
-		this.postProcessingEnabled = options.postProcessing?.enabled ?? this.postProcessingEnabled;
 		this.toneMapping = options.toneMapping ?? this.toneMapping;
 		this.toneMappingExposure = options.toneMappingExposure ?? this.toneMappingExposure;
 		this.renderLayers = new Layers();
@@ -245,37 +223,6 @@ export class PhysicallyBasedViewer<
 		if (options.defaultEnvironment !== false) {
 			this.loadEnvironment(PhysicallyBasedViewer.defaultEnvironments.studio_small_08_64_hdr);
 		}
-
-		// post processing
-		this.effectComposerTarget = new WebGLRenderTarget(1, 1, {
-			anisotropy: 0,
-			colorSpace: NoColorSpace,
-			depthBuffer: true,
-			format: RGBAFormat,
-			generateMipmaps: false,
-			magFilter: NearestFilter,
-			minFilter: NearestFilter,
-			samples: options.postProcessing?.msaaSamples ?? 0,
-			stencilBuffer: false,
-			type: HalfFloatType,
-			wrapS: undefined,
-			wrapT: undefined,
-		})
-
-		this.effectComposer = new EffectComposer(renderer, this.effectComposerTarget);
-
-		// Scene Render Pass
-		this.effectsCompositorRenderPass = new RenderPass(this.scene, this.camera);
-		this.effectComposer.addPass(this.effectsCompositorRenderPass);
-
-		// Bloom Pass
-		this.bloomPass = new UnrealBloomPass(
-			new Vector2(1, 1),
-			options.postProcessing?.bloomStrength ?? 0.25,
-			options.postProcessing?.bloomRadius ?? 0.1,
-			options.postProcessing?.bloomThreshold ?? 0.0,
-		);
-		this.effectComposer.addPass(this.bloomPass);
 
 		// Enable shadows
         if (options.shadows !== false) {
@@ -385,16 +332,7 @@ export class PhysicallyBasedViewer<
 				ACESFilmicToneMapping,
 				AgXToneMapping,
 			});
-			renderingFolder.add(this, 'postProcessingEnabled');
 			renderingFolder.add(this, 'toneMappingExposure', 0, 2);
-			renderingFolder.add(this, 'postProcessMsaaSamples', 0, renderer.capabilities.maxSamples, 1).name('MSAA');
-
-			// bloom
-			let bloomFolder = renderingFolder.addFolder('Bloom');
-			bloomFolder.add(this.bloomPass, 'enabled');
-			bloomFolder.add(this.bloomPass, 'strength', 0, 3);
-			bloomFolder.add(this.bloomPass, 'radius', 0, 1);
-			bloomFolder.add(this.bloomPass, 'threshold', 0, 1);
 
 			this.dev = {
 				root: new Object3D(),
@@ -476,18 +414,6 @@ export class PhysicallyBasedViewer<
 					}
 				}
 
-				// p to toggle post processing
-				if (event.key === 'p' && event.target === document.body) {
-					this.postProcessingEnabled = !this.postProcessingEnabled;
-					DevUI.ui.controllersRecursive().find(c => c.property === 'postProcessingEnabled')?.updateDisplay();
-				}
-
-				// b to toggle bloom
-				if (event.key === 'b' && event.target === document.body) {
-					this.bloomPass.enabled = !this.bloomPass.enabled;
-					DevUI.ui.controllersRecursive().find(c => c.property === 'enabled' && c.object === this.bloomPass)?.updateDisplay();
-				}
-
 				// d to toggle dev layer
 				if (event.key === 'd' && event.target === document.body) {
 					this.renderLayers.toggle(Layer.Developer);
@@ -510,6 +436,9 @@ export class PhysicallyBasedViewer<
 
 	private _lastRenderTime_ms: number = NaN;
 
+	/**
+	 * Called automatically every frame by the WebGLRenderer (`setAnimationLoop`). Use `customRender` or subscribe to the `beforeFrameRender` event to customize rendering.
+	 */
 	animationFrame(renderTarget: WebGLRenderTarget | null = null, camera: Camera = this.camera, renderLayers: Layers = this.renderLayers) {
 		let { renderer, scene } = this;
 		let renderTime_ms = performance.now();
@@ -565,54 +494,36 @@ export class PhysicallyBasedViewer<
 			scene,
 		});
 
-		// effect composer pipeline
-		if (this.postProcessingEnabled) {
-			this.renderer.toneMappingExposure = this.toneMappingExposure;
-			this.renderer.toneMapping = this.toneMapping;
-			this.renderer.outputColorSpace = SRGBColorSpace;
-			this.renderer.setClearColor(this.clearColor.rgb, this.clearColor.alpha);
-			this.renderer.autoClearDepth = true;
-			this.renderer.autoClearStencil = true;
-			this.camera.layers.mask = renderLayers.mask;
-
-			if (this.effectComposer.renderTarget1.width !== targetWidth || this.effectComposer.renderTarget1.height !== targetHeight) {
-				this.effectComposer.setSize(targetWidth, targetHeight);
-			}
-			this.renderer.setViewport(0, 0, targetWidth, targetHeight);
-			this.effectComposer.render(dt_s);
+		if (this.customRender) {
+			this.customRender(this.renderer, {
+				camera,
+				scene,
+				target: renderTarget,
+				layers: renderLayers,
+				clearColor: this.clearColor,
+				clearDepth: true,
+				clearStencil: true,
+				toneMapping: this.toneMapping,
+				toneMappingExposure: this.toneMappingExposure,
+				restoreGlobalState: true,
+			});
 		} else {
-			if (this.customRender) {
-				this.customRender({
-					camera,
-					scene,
-					target: renderTarget,
-					layers: renderLayers,
-					clearColor: this.clearColor,
-					clearDepth: true,
-					clearStencil: true,
-					toneMapping: this.toneMapping,
-					toneMappingExposure: this.toneMappingExposure,
-					restoreGlobalState: true,
-				});
-			} else {
-				this.render(camera, {
-					target: renderTarget,
-					layers: renderLayers,
-					clearColor: this.clearColor,
-					clearDepth: true,
-					clearStencil: true,
-					toneMapping: this.toneMapping,
-					toneMappingExposure: this.toneMappingExposure,
-					restoreGlobalState: true,
-				});
-			}
-
+			this.defaultRender(camera, {
+				target: renderTarget,
+				layers: renderLayers,
+				clearColor: this.clearColor,
+				clearDepth: true,
+				clearStencil: true,
+				toneMapping: this.toneMapping,
+				toneMappingExposure: this.toneMappingExposure,
+				restoreGlobalState: true,
+			});
 		}
 	}
 
-	customRender: undefined | ((renderPassOptions: Rendering.RenderPassOptions) => void) = undefined;
+	customRender: undefined | ((renderer: WebGLRenderer, renderPassOptions: Rendering.RenderPassOptions) => void) = undefined;
 
-	render(camera: Camera, renderPassOptions: Omit<Rendering.RenderPassOptions, 'scene' | 'camera'>) {
+	defaultRender(camera: Camera, renderPassOptions: Omit<Rendering.RenderPassOptions, 'scene' | 'camera'>) {
 		Rendering.renderPass(this.renderer, {
 			scene: this.scene,
 			camera,
