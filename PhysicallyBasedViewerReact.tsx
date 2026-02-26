@@ -32,13 +32,6 @@ const PhysicallyBasedViewerReact = forwardRef<HTMLDivElement, ViewerProps>((prop
             defaultEnvironment: false,
             toneMapping: CineonToneMapping,
             toneMappingExposure: 1.0,
-            postProcessing: {
-                enabled: false,
-                bloomStrength: 0.291,
-                bloomRadius: 0.673,
-                bloomThreshold: 0.0,
-                msaaSamples: 4,
-            },
             ...props.options,
         });
 
