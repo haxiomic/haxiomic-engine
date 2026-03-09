@@ -517,7 +517,9 @@ function patchSmoothViewDirectionForOrthoPerspectiveCamera() {
     // Our hybrid camera sets it to -projectionBlend
     const projectVertexPatch = /* glsl */ `
         ${patchHeader}
+        #ifdef PERSPECTIVE_FACTOR
         vPerspectiveFactor = clamp(-projectionMatrix[2][3], 0.0, 1.0);
+        #endif
     `;
     ShaderChunk.project_vertex = ShaderChunk.project_vertex + projectVertexPatch;
 
