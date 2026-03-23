@@ -1,10 +1,10 @@
 import { PMREMGenerator, Texture, WebGLRenderer } from "three";
-import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
+import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 
 export function loadEnvironment(renderer: WebGLRenderer, path: string): Promise<Texture> {
 	return new Promise((resolve, reject) => {
 		// environment
-		let rgbeLoader = new RGBELoader().load(
+		let rgbeLoader = new HDRLoader().load(
 			path,
 			(texture: Texture) => {
 				const pmremGenerator = new PMREMGenerator(renderer)

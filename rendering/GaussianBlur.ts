@@ -19,8 +19,8 @@ export function gaussianBlur(
 
 	let ctx = renderer.getContext();
 
-	let textureWidth: number = texture.image.width ?? texture.source.data.width ?? texture.image.videoWidth;
-	let textureHeight: number = texture.image.height ?? texture.source.data.height ?? texture.image.videoHeight;
+	let textureWidth: number = (texture.image as any).width ?? (texture.source.data as any).width ?? (texture.image as any).videoWidth;
+	let textureHeight: number = (texture.image as any).height ?? (texture.source.data as any).height ?? (texture.image as any).videoHeight;
 
 	let textureOptions: RenderTargetStoreOptions = {
 		magFilter: LinearFilter,

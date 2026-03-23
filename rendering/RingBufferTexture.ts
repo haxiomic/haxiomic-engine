@@ -70,7 +70,7 @@ export class RingBufferTexture<T extends TextureDataType = TextureDataType> exte
         const dataConstructor = getTypedArrayConstructor(type);
 
         super(
-            data ?? new dataConstructor(rowWidth * rowCount * channelCount),
+            (data ?? new dataConstructor(rowWidth * rowCount * channelCount)) as TypedArray | null,
             rowWidth,
             rowCount,
             format,

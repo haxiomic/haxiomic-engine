@@ -1,7 +1,7 @@
 import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, ArrayCamera, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, Layers, LinearToneMapping, Matrix4, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, Scene, Texture, ToneMapping, Vector3, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { RGBELoader } from "three/examples/jsm/loaders/RGBELoader.js";
+import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 import { Console } from "./Console.js";
 import { DevUI } from "./dev/DevUI.js";
 import { EnvironmentProbes } from "./dev/EnvironmentProbes.js";
@@ -554,7 +554,7 @@ export class PhysicallyBasedViewer<
 		let texturePromise = this._loadEnvironmentPromise.finally(() => new Promise<Texture>((resolve, reject) => {
 			const pmremGenerator = new PMREMGenerator(this.renderer)
 			pmremGenerator.compileEquirectangularShader()
-			new RGBELoader().load(
+			new HDRLoader().load(
 				url,
 				(texture: Texture) => {
 					const environment = pmremGenerator.fromEquirectangular(texture).texture
