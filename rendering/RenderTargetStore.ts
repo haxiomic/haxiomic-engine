@@ -138,8 +138,8 @@ export default class RenderTargetStore {
 			let needsReallocation = (
 				target.width != textureWidth ||
 				target.height != textureHeight ||
-				options?.msaaSamples !== target?.samples ||
-				options?.type !== target?.texture.type
+				(options?.msaaSamples != null && (options?.msaaSamples !== target?.samples))||
+				(options?.type != null && options?.type !== target?.texture.type)
 			);
 
 			// update options, here we do not use defaults intentionally
