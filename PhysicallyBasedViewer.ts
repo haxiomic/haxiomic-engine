@@ -620,8 +620,6 @@ function createDomEventProxy(interactionManager: InteractionManager, priority?: 
 	// we remap pointer up to global pointer up to catch edge cases, for example, right click drag out of browser window
 	eventMap.pointerup = eventMap.globalpointerup;
 	return {
-		getRootNode: () => interactionManager.el.getRootNode(),
-		ownerDocument: interactionManager.el.ownerDocument,
 		addEventListener: (type: string, listener: (event: Event) => void, options: {}) => {
 			let eventEmitter: EventSignal<Event> = (eventMap as any)[type.toLowerCase()];
 			if (eventEmitter != null) {
@@ -638,13 +636,16 @@ function createDomEventProxy(interactionManager: InteractionManager, priority?: 
 				Console.warn(`DomEventProxy: unknown event type "${type}"`);
 			}
 		},
-		style: {},
 		setPointerCapture: (pointerId: number) => {
 			interactionManager.el.setPointerCapture(pointerId);
 		},
 		releasePointerCapture: (pointerId: number) => {
 			interactionManager.el.releasePointerCapture(pointerId);
 		},
+		style: {},
+		// pass through
+		getRootNode: () => interactionManager.el.getRootNode(),
+		ownerDocument: interactionManager.el.ownerDocument,
 		getBoundingClientRect: () => {
 			return interactionManager.el.getBoundingClientRect();
 		},
