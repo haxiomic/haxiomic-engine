@@ -1,5 +1,5 @@
-import { nearestPowerOfTwo } from "../math/Math.js";
-import { AnyPixelFormat, ClampToEdgeWrapping, ColorSpace, DepthTexture, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, PixelFormat, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderer, WebGLRenderTarget, Wrapping } from 'three';
+import { nearestPowerOfTwo } from '../math/Math.js';
+import { ClampToEdgeWrapping, ColorSpace, DepthTexture, LinearFilter, MagnificationTextureFilter, MathUtils, MinificationTextureFilter, NoColorSpace, PixelFormat, RGBAFormat, TextureDataType, UnsignedByteType, WebGLRenderer, WebGLRenderTarget, Wrapping } from 'three';
 
 export enum PowerOfTwoMode {
 	None,
@@ -10,10 +10,7 @@ export enum PowerOfTwoMode {
 
 type RenderTarget = WebGLRenderTarget & {
 	name: string;
-	texture: {
-		width: number;
-		height: number;
-	}
+	copyContentWhenReallocating: boolean;
 }
 
 export type RenderTargetStoreOptions = {
@@ -34,7 +31,7 @@ export type RenderTargetStoreOptions = {
 
 export default class RenderTargetStore {
 
-	static defaultOptions: RenderTargetStoreOptions = {
+	static defaultOptions = {
 		powerOfTwoMode: PowerOfTwoMode.None,
 		depthBuffer: false,
 		depthTexture: undefined,
@@ -54,12 +51,17 @@ export default class RenderTargetStore {
 
 	getRenderTarget(
 		key: string,
-		width: number,
-		height: number,
+		width?: number,
+		height?: number,
 		options?: RenderTargetStoreOptions,
-		onCreateOrResize?: (target: RenderTarget, event: 'create' | 'resize') => void,
+		/** You may use this to copy content when reallocating as target will be valid during the callback */
+		onCreateOrReallocate?: (event: 'create' | 'reallocate', newTarget: RenderTarget, oldTarget: RenderTarget) => void,
 	) {
-		let target = this.renderTargets[key];
+		let target: RenderTarget | undefined = this.renderTargets[key];
+
+		if (width == null || height == null) {
+			return target;
+		}
 
 		width = Math.max(1, width);
 		height = Math.max(1, height);
@@ -88,35 +90,59 @@ export default class RenderTargetStore {
 			} break;
 		}
 
+		// creation
 		if (target == null) {
 			const defaultOptions = RenderTargetStore.defaultOptions;
+			const colorSpace = options?.colorSpace ?? defaultOptions.colorSpace;
+			const anisotropy = options?.anisotropy ?? defaultOptions.anisotropy;
+			const generateMipmaps = false;
+			const stencilBuffer = false;
+			const depthBuffer = options?.depthBuffer || !!options?.depthTexture;
+			const depthTexture = options?.depthTexture ?? null;
+			const type = options?.type ?? defaultOptions.type;
+			const format = options?.format ?? defaultOptions.format;
+			const magFilter = options?.magFilter ?? defaultOptions.magFilter;
+			const minFilter = options?.minFilter ?? options?.magFilter ?? defaultOptions.minFilter;
+			const wrapS = options?.wrapS ?? defaultOptions.wrapS;
+			const wrapT = options?.wrapT ?? defaultOptions.wrapT;
+			const samples = options?.msaaSamples ?? defaultOptions.msaaSamples;
+			const allocateMipmaps = options?.allocateMipmaps ?? defaultOptions.allocateMipmaps;
+
 			// console.info(`RenderTargetStore creating render target ${name}`);
 			target = new WebGLRenderTarget(textureWidth, textureHeight, {
-				colorSpace: options?.colorSpace ?? defaultOptions.colorSpace,
-				anisotropy: options?.anisotropy ?? defaultOptions.anisotropy,
-				generateMipmaps: false,
-				stencilBuffer: false,
-				depthBuffer: options?.depthBuffer || !!options?.depthTexture,
-				depthTexture: options?.depthTexture ?? null,
-				type: options?.type ?? defaultOptions.type,
-				format: options?.format ?? defaultOptions.format,
-				magFilter: options?.magFilter ?? defaultOptions.magFilter,
-				minFilter: options?.minFilter ?? options?.magFilter ?? defaultOptions.minFilter,
-				wrapS: options?.wrapS ?? defaultOptions.wrapS,
-				wrapT: options?.wrapT ?? defaultOptions.wrapT,
-				samples: options?.msaaSamples ?? defaultOptions.msaaSamples,
+				colorSpace,
+				anisotropy,
+				generateMipmaps,
+				stencilBuffer,
+				depthBuffer,
+				depthTexture,
+				type,
+				format,
+				magFilter,
+				minFilter,
+				wrapS,
+				wrapT,
+				samples,
 			}) as RenderTarget;
+
 			// target.texture.width = target.width;
 			// target.texture.height = target.height;
 			target.name = key;
 			this.renderTargets[key] = target;
 
-			if (options?.allocateMipmaps) {
+			if (allocateMipmaps) {
 				initMipmapArray(target);
 			}
-			onCreateOrResize?.(target, 'create');
+			onCreateOrReallocate?.('create', target, target);
 		} else {
-			// update options
+			let needsReallocation = (
+				target.width != textureWidth ||
+				target.height != textureHeight ||
+				options?.msaaSamples !== target?.samples ||
+				options?.type !== target?.texture.type
+			);
+
+			// update options, here we do not use defaults intentionally
 			if (options != null) {
 				target.texture.type = options.type;
 				target.texture.format = options.format ?? target.texture.format
@@ -132,25 +158,54 @@ export default class RenderTargetStore {
 			}
 
 			// resize if needed
-			if (
-				target.width != textureWidth ||
-				target.height != textureHeight
-			) {
-				target.setSize(textureWidth, textureHeight);
+			if (needsReallocation) {
+				// target.setSize(textureWidth, textureHeight);
 				// target.texture.width = target.width;
 				// target.texture.height = target.height;
+				let newTarget: RenderTarget = new WebGLRenderTarget(textureWidth, textureHeight, {
+					anisotropy: target.texture.anisotropy,
+					colorSpace: target.texture.colorSpace as ColorSpace,
+					depthBuffer: target.depthBuffer,
+					depthTexture: target.depthTexture,
+					format: target.texture.format as PixelFormat,
+					generateMipmaps: target.texture.generateMipmaps,
+					magFilter: target.texture.magFilter,
+					minFilter: target.texture.minFilter,
+					samples: target.samples,
+					type: target.texture.type,
+					wrapS: target.texture.wrapS,
+					wrapT: target.texture.wrapT,
+				}) as RenderTarget;
+				newTarget.name = key;
+
+				console.log(`RenderTargetStore reallocating render target ${key} to ${textureWidth}x${textureHeight}, ${newTarget.samples} samples, type ${newTarget.texture.type}`, target.texture);
+
+				this.renderTargets[key] = newTarget;
 
 				if (options?.allocateMipmaps) {
-					initMipmapArray(target);
+					initMipmapArray(newTarget);
 				}
-				onCreateOrResize?.(target, 'resize');
+
+				onCreateOrReallocate?.('reallocate', newTarget, target);
+
+				// clear old target
+				target.dispose();
+				target = newTarget;
 			}
 		}
 
 		return target;
 	}
 
-	clearAndDispose() {
+	disposeRenderTarget(key: string) {
+		const target = this.renderTargets[key];
+		if (target) {
+			target.dispose();
+			delete this.renderTargets[key];
+		}
+	}
+
+	clearAndDisposeAll() {
 		for (let name in this.renderTargets) {
 			let target = this.renderTargets[name];
 			target.dispose();
@@ -165,7 +220,7 @@ export default class RenderTargetStore {
 			(target as any)[storeSymbol] = store;
 			// dispose store when target is disposed
 			target.addEventListener('dispose', () => {
-				store.clearAndDispose();
+				store.clearAndDisposeAll();
 			});
 		}
 		return store;
@@ -180,7 +235,7 @@ export default class RenderTargetStore {
 		return store;
 	}
 
-	static getOptionsFromRenderTarget(target: WebGLRenderTarget): RenderTargetStoreOptions {
+	static getOptionsFromRenderTarget(target: RenderTarget): RenderTargetStoreOptions {
 		return {
 			powerOfTwoMode: PowerOfTwoMode.None,
 			depthBuffer: target.depthBuffer,

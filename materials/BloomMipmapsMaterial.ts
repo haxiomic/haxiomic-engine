@@ -10,7 +10,8 @@ import { ShaderMaterial } from "./ShaderMaterial.js";
  */
 export class BloomMipmapsMaterial extends ShaderMaterial<{
     source: Uniform<Texture | null>,
-    mipmapSource?: Uniform<Texture | null>,
+    /** Usually the same as source */
+    mipmapSource: Uniform<Texture | null>,
     bloomStrength: Uniform<number>,
     bloomFalloff: Uniform<number>,
     minLod: Uniform<number>,
