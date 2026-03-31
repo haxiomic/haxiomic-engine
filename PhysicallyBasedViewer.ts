@@ -621,6 +621,7 @@ function createDomEventProxy(interactionManager: InteractionManager, priority?: 
 	eventMap.pointerup = eventMap.globalpointerup;
 	return {
 		getRootNode: () => interactionManager.el.getRootNode(),
+		ownerDocument: interactionManager.el.ownerDocument,
 		addEventListener: (type: string, listener: (event: Event) => void, options: {}) => {
 			let eventEmitter: EventSignal<Event> = (eventMap as any)[type.toLowerCase()];
 			if (eventEmitter != null) {
