@@ -537,7 +537,7 @@ export class PhysicallyBasedViewer<
 		this.interactionManager.removeEventListeners();
 		this.threeInteraction.dispose();
 		this.events.dispose.dispatch();
-		this.renderTargetStore.clearAndDispose();
+		this.renderTargetStore.clearAndDisposeAll();
 		this.renderer.forceContextLoss();
 		this.renderer.dispose();
 	}
