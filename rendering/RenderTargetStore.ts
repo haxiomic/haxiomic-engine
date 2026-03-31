@@ -178,7 +178,7 @@ export default class RenderTargetStore {
 				}) as RenderTarget;
 				newTarget.name = key;
 
-				console.log(`RenderTargetStore reallocating render target ${key} to ${textureWidth}x${textureHeight}, ${newTarget.samples} samples, type ${newTarget.texture.type}`, target.texture);
+				// console.info(`RenderTargetStore reallocating render target ${key} to ${textureWidth}x${textureHeight}, ${newTarget.samples} samples, type ${newTarget.texture.type}`, target.texture);
 
 				this.renderTargets[key] = newTarget;
 
