@@ -4,6 +4,7 @@ import { RawShaderMaterial } from "../materials/RawShaderMaterial.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 import ClipSpaceTriangle from "../objects/ClipSpaceTriangle.js";
 import { RGBASwizzle } from "../materials/Swizzle.js";
+import { isObjectWidthMaterial, ObjectUtils, ObjectWidthMaterial } from "../utils/ObjectUtils.js";
 
 export namespace Rendering {
 
@@ -28,6 +29,8 @@ export namespace Rendering {
 		},
 		viewport: new Vector4(),
 	}
+
+	const SavedMaterialSymbol = Symbol('SavedMaterial');
 
 	export function saveGlobalState(renderer: WebGLRenderer) {
 		// update _renderPassSnapshot
@@ -93,7 +96,7 @@ export namespace Rendering {
 		/**
 		 * If provided the scene will be rendered with this material
 		 */
-		overrideMaterial?: Material,
+		overrideMaterial?: Material | ((obj: ObjectWidthMaterial) => Material | Material[]),
 		/**
 		 * Override camera layers mask
 		 */
@@ -146,14 +149,31 @@ export namespace Rendering {
 		}
 		
 		// set override material (storing the previous one)
-		let _overrideMaterial: unknown; // this is let unset if the overrideMaterial is not used
+		let _savedOverrideMaterialGlobal: unknown; // this is let unset if the overrideMaterial is not used
+		let _restoreSavedIndividualMaterials = false; // true when we override individual materials
 		if (overrideMaterial != null) {
-			if (isScene(scene)) {
-				_overrideMaterial = scene.overrideMaterial;
-				scene.overrideMaterial = overrideMaterial;
+			if (typeof overrideMaterial === 'function') {
+				scene.traverse((obj) => {
+					if (isScene(obj)) return; // skip scenes as they will globally override materials
+					if (isObjectWidthMaterial(obj)) {
+						const originalMaterial = obj.material;
+						const newMaterial = overrideMaterial(obj as ObjectWidthMaterial);
+						if (newMaterial !== originalMaterial) {
+							(obj as ObjectWidthMaterial).material = newMaterial;
+							// save the original material so we can restore it later
+							(obj as any)[SavedMaterialSymbol] = originalMaterial;
+						}
+					}
+				});
+				_restoreSavedIndividualMaterials = true;
 			} else {
-				_overrideMaterial = scene.material;
-				scene.material = overrideMaterial;
+				if (isScene(scene)) {
+					_savedOverrideMaterialGlobal = scene.overrideMaterial;
+					scene.overrideMaterial = overrideMaterial;
+				} else {
+					_savedOverrideMaterialGlobal = scene.material;
+					scene.material = overrideMaterial;
+				}
 			}
 		}
 
@@ -189,10 +209,25 @@ export namespace Rendering {
 
 		// restore override material (only if changed)
 		if (overrideMaterial != null) {
-			if (isScene(scene)) {
-				scene.overrideMaterial = _overrideMaterial as Scene['overrideMaterial'];
+			if (_restoreSavedIndividualMaterials) {
+				scene.traverse((obj) => {
+					if (isScene(obj)) return; // skip scenes as they will globally override materials
+					if (isObjectWidthMaterial(obj)) {
+						const savedMaterial = (obj as any)[SavedMaterialSymbol] as Material | Material[] | undefined;
+						if (savedMaterial !== undefined) {
+							(obj as ObjectWidthMaterial).material = savedMaterial;
+							(obj as any)[SavedMaterialSymbol] = undefined; // clean up
+						}
+					}
+				});
+				_restoreSavedIndividualMaterials = false;
 			} else {
-				scene.material = _overrideMaterial as Mesh['material'];
+				// global overrides
+				if (isScene(scene)) {
+					scene.overrideMaterial = _savedOverrideMaterialGlobal as Scene['overrideMaterial'];
+				} else {
+					scene.material = _savedOverrideMaterialGlobal as Mesh['material'];
+				}
 			}
 		}
 
