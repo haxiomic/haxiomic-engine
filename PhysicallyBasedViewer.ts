@@ -38,6 +38,17 @@ export type PhysicallyBasedViewerOptions<Controls extends {
 	defaultLights?: boolean,
 	/** explicitly provide parameters to new WebGLRenderer */
 	webglRendererParameters?: WebGLRendererParameters,
+	/**
+	 * Use a pre-existing WebGLRenderer instead of letting PBV construct
+	 * one. When set, `webglRendererParameters` is ignored and PBV does NOT
+	 * call `setAnimationLoop` — the caller drives ticks themselves by
+	 * calling `viewer.animationFrame()` (e.g. from a r3f `useFrame` or
+	 * an `addEffect` subscription on a shared renderer).
+	 *
+	 * Useful for SharedCanvas / multi-pane setups where one renderer is
+	 * shared across many viewers to dodge the browser's WebGL-context cap.
+	 */
+	renderer?: WebGLRenderer,
 	toneMapping?: ToneMapping,
 	toneMappingExposure?: number,
 	shadows?: boolean,
@@ -61,6 +72,13 @@ export class PhysicallyBasedViewer<
 	readonly logTag: string;
 	readonly canvas: HTMLCanvasElement;
 	readonly renderer: WebGLRenderer;
+	/**
+	 * False when PBV constructed and owns the renderer (default), true
+	 * when the renderer was passed in via the `renderer` option. In the
+	 * latter case PBV doesn't run setAnimationLoop and doesn't dispose
+	 * the renderer — the caller's responsibility.
+	 */
+	readonly ownsRenderer: boolean;
 	readonly scene = new Scene();
 	camera: PerspectiveCamera;
 
@@ -137,7 +155,11 @@ export class PhysicallyBasedViewer<
 		this.canvas = canvas;
 
 		ColorManagement.enabled = true;
-		const renderer = this.renderer = new WebGLRenderer({
+		// Caller can supply a pre-existing renderer (e.g. a SharedCanvas
+		// shared one). In that case we don't construct our own and don't
+		// touch its animation loop later — see the renderer option.
+		this.ownsRenderer = options.renderer == null;
+		const renderer = this.renderer = options.renderer ?? new WebGLRenderer({
 			canvas: canvas,
 			alpha: true,
 			antialias: true,
@@ -431,7 +453,13 @@ export class PhysicallyBasedViewer<
 			});
 		}
 
-		renderer.setAnimationLoop((time, frame) => this.animationFrame());
+		// When the renderer is external the caller drives the loop (e.g.
+		// via r3f's useFrame). PBV stays passive — useful when many PBV
+		// instances share one renderer and only one entity should own
+		// `setAnimationLoop`.
+		if (this.ownsRenderer) {
+			renderer.setAnimationLoop((time, frame) => this.animationFrame());
+		}
 	}
 
 	private _lastRenderTime_ms: number = NaN;
@@ -538,8 +566,12 @@ export class PhysicallyBasedViewer<
 		this.threeInteraction.dispose();
 		this.events.dispose.dispatch();
 		this.renderTargetStore.clearAndDisposeAll();
-		this.renderer.forceContextLoss();
-		this.renderer.dispose();
+		// Don't dispose a renderer we don't own — that would kill the
+		// shared GL context for siblings still using it.
+		if (this.ownsRenderer) {
+			this.renderer.forceContextLoss();
+			this.renderer.dispose();
+		}
 	}
 
 	protected _loadEnvironmentPromise: Promise<any> = Promise.resolve(null);
