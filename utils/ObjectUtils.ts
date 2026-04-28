@@ -35,6 +35,9 @@ export namespace ObjectUtils {
 		});
 	}
 
+	/**
+	 * Replaces .material on **all** objects with a .material property 
+	 */
 	export function replaceMaterials(obj: Object3D, callback: (obj: ObjectWidthMaterial, material: Material | Array<Material>) => Material | Array<Material>) {
 		let newMaterials = new Map<ObjectWidthMaterial, Material | Array<Material>>();
 		let previousMaterials = new Map<ObjectWidthMaterial, Material | Array<Material>>();
@@ -48,7 +51,8 @@ export namespace ObjectUtils {
 			}
 		});
 		return {
-			materials: newMaterials,
+			newMaterials,
+			previousMaterials,
 			apply: (callback?: (obj: ObjectWidthMaterial, material: Material | Array<Material>) => void) => {
 				newMaterials.forEach((material, obj) => {
 					callback?.(obj, material);
