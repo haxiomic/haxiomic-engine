@@ -30,6 +30,15 @@ export namespace Rendering {
 		viewport: new Vector4(),
 	}
 
+	function resetState(state: typeof _tempGlobalState) {
+		state.renderTarget = null;
+		state.activeMipmapLevel = 0;
+		state.activeCubeFace = 0;
+		state.clearColor.rgb.set(0, 0, 0);
+		state.clearColor.alpha = 0;
+		state.viewport.set(0, 0, 0, 0);
+	}
+
 	const SavedMaterialSymbol = Symbol('SavedMaterial');
 
 	export function saveGlobalState(renderer: WebGLRenderer) {
@@ -492,19 +501,9 @@ export namespace Rendering {
 			rawCopyMaterials[key].dispose();
 			delete rawCopyMaterials[key];
 		}
-		_renderPassSnapshot.renderTarget = null;
-		_renderPassSnapshot.activeMipmapLevel = 0;
-		_renderPassSnapshot.activeCubeFace = 0;
-		_renderPassSnapshot.clearColor.rgb.set(0, 0, 0);
-		_renderPassSnapshot.clearColor.alpha = 0;
-		_renderPassSnapshot.viewport.set(0, 0, 0, 0);
 
-		_tempGlobalState.renderTarget = null;
-		_tempGlobalState.activeMipmapLevel = 0;
-		_tempGlobalState.activeCubeFace = 0;
-		_tempGlobalState.clearColor.rgb.set(0, 0, 0);
-		_tempGlobalState.clearColor.alpha = 0;
-		_tempGlobalState.viewport.set(0, 0, 0, 0);
+		resetState(_renderPassSnapshot);
+		resetState(_tempGlobalState);
 	}
 
 }
