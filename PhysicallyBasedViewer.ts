@@ -41,12 +41,7 @@ export type PhysicallyBasedViewerOptions<Controls extends {
 	/**
 	 * Use a pre-existing WebGLRenderer instead of letting PBV construct
 	 * one. When set, `webglRendererParameters` is ignored and PBV does NOT
-	 * call `setAnimationLoop` — the caller drives ticks themselves by
-	 * calling `viewer.animationFrame()` (e.g. from a r3f `useFrame` or
-	 * an `addEffect` subscription on a shared renderer).
-	 *
-	 * Useful for SharedCanvas / multi-pane setups where one renderer is
-	 * shared across many viewers to dodge the browser's WebGL-context cap.
+	 * call `setAnimationLoop` — the caller drives ticks themselves
 	 */
 	renderer?: WebGLRenderer,
 	toneMapping?: ToneMapping,
