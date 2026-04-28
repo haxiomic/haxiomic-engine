@@ -15,6 +15,15 @@ export class ThreeInteraction {
     readonly capturedPointers: { [id: number]: Array<InteractiveObject3D> | undefined } = {}
     readonly hoveredObjects: { [id: number]: Array<InteractiveObject3D> | undefined } = {}
 
+    /**
+     * Cursor value we have currently asserted on canvas.style.cursor, or
+     * null if we haven't asserted one since the last release. Used by
+     * `claimCursor` to compose with other cursor owners on the same canvas:
+     * we only write the inline style when our claim state changes, instead
+     * of clobbering it on every pointermove.
+     */
+    private claimedCursor: string | null = null
+
     private listeners: Array<{remove: () => void}>
 
     constructor(interactionManager: InteractionManager, scene: Scene, camera: Camera, priority = 1) {
@@ -165,7 +174,26 @@ export class ThreeInteraction {
             }
         }
 
-        this.setCursor(cursor ?? '')
+        this.claimCursor(cursor)
+    }
+
+    /**
+     * Claim the canvas cursor on behalf of ThreeInteraction.
+     *
+     *   - Non-null: announce we want this cursor and write it to the canvas.
+     *   - Null/undefined: release any prior claim. We write '' only if we
+     *     had previously claimed something — otherwise we leave the cursor
+     *     alone, so other cursor owners (CSS rules, sibling managers) on
+     *     the same canvas aren't clobbered every pointermove.
+     */
+    private claimCursor(cursor: string | null | undefined) {
+        if (cursor != null) {
+            this.interactionManager.el.style.cursor = cursor
+            this.claimedCursor = cursor
+        } else if (this.claimedCursor != null) {
+            this.interactionManager.el.style.cursor = ''
+            this.claimedCursor = null
+        }
     }
     protected onPointerUp = (e: PointerEventExtended) => {
         let capturedObjects = this.capturedPointers[e.pointerId] ?? [];
@@ -266,10 +294,6 @@ export class ThreeInteraction {
             x: (e.clientX - rect.left) / rect.width * 2 - 1,
             y: -(e.clientY - rect.top) / rect.height * 2 + 1,
         }
-    }
-    
-    private setCursor(cursor: string) {
-        this.interactionManager.el.style.cursor = cursor
     }
 
     private isVisible(target: Object3D) {
