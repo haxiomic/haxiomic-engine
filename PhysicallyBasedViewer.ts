@@ -473,8 +473,14 @@ export class PhysicallyBasedViewer<
 
 		this.dev?.stats.update();
 
-		let canvas = renderer.domElement;
-		
+		// Read sizing from the consumer-supplied canvas, not renderer.domElement.
+		// Identical in default mode (the renderer was constructed against this
+		// canvas, so they're the same element). Different — and the right
+		// answer — in external-renderer mode where the renderer's domElement
+		// may be off-DOM (e.g. SharedCanvas's hidden shared canvas) and would
+		// report clientWidth/Height = 0, producing a NaN camera aspect.
+		let canvas = this.canvas;
+
 		let targetWidth = Math.floor(canvas.clientWidth * this.pixelRatio);
 		let targetHeight = Math.floor(canvas.clientHeight * this.pixelRatio);
 
