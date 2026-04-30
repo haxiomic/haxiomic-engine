@@ -198,12 +198,6 @@ export class PhysicallyBasedViewer<
 			orbitControls.rotateSpeed = 1.1;
 			orbitControls.zoomSpeed = 0.5;
 			orbitControls.maxDistance = Infinity;
-			orbitControls.addEventListener('start', () => {
-				canvas.style.cursor = 'grabbing';
-			});
-			orbitControls.addEventListener('end', () => {
-				canvas.style.cursor = 'grab';
-			});
 			this.events.dispose.once(() => {
 				orbitControls.dispose();
 			});
@@ -212,8 +206,6 @@ export class PhysicallyBasedViewer<
 		} else {
 			this.controls = typeof options.controls === 'function' ? options.controls(this.camera, interactionManager) : options.controls;
 		}
-
-		canvas.style.cursor = 'grab';
 
 		interactionManager.attachEventListeners();
 
