@@ -118,7 +118,6 @@ export class PhysicallyBasedViewer<
 	readonly threeInteraction: ThreeInteraction;
 
 	readonly gltfLoader: GLTFLoader;
-	protected frameLoopHandle: number = -1;
 
 	protected fallbackAmbientLight = new AmbientLight(0xffffff, 2.0);
 
@@ -554,7 +553,6 @@ export class PhysicallyBasedViewer<
 
 	dispose = () => {
 		Console.log(`${this.logTag}: dispose()</>`);
-		window.cancelAnimationFrame(this.frameLoopHandle);
 		this.interactionManager.removeEventListeners();
 		this.threeInteraction.dispose();
 		this.events.dispose.dispatch();
