@@ -147,14 +147,27 @@ export namespace Rendering {
 		if (viewport != null) {
 			renderer.setViewport(viewport.x, viewport.y, viewport.z, viewport.w);
 		} else if (target != null) {
+			// `target.width/height` are device pixels (the framebuffer's
+			// real pixel count). `renderer.setViewport` is documented as
+			// taking "logical pixel unit" — it stores the value and then
+			// applies `_viewport × pixelRatio` to gl.viewport. So if we
+			// pass device pixels here, gl.viewport ends up DPR-times too
+			// large at any pixelRatio > 1, and the pass fills only the
+			// (1/pixelRatio)² bottom-left fraction of the target. Divide
+			// by pixelRatio so the multiply lands on the correct device-
+			// pixel viewport. At pixelRatio=1 the math is unchanged.
+			const dpr = renderer.getPixelRatio();
 			renderer.setViewport(
-				0, 0, 
-				Math.max(target.width >> targetMipmapLevel, 1),
-				Math.max(target.height >> targetMipmapLevel, 1)
+				0, 0,
+				Math.max((target.width >> targetMipmapLevel) / dpr, 1),
+				Math.max((target.height >> targetMipmapLevel) / dpr, 1)
 			);
 		} else {
+			// Same correction as above: drawingBufferWidth/Height are
+			// device pixels, setViewport multiplies by pixelRatio.
 			let gl = renderer.getContext();
-			renderer.setViewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+			const dpr = renderer.getPixelRatio();
+			renderer.setViewport(0, 0, gl.drawingBufferWidth / dpr, gl.drawingBufferHeight / dpr);
 		}
 		
 		// set override material (storing the previous one)
