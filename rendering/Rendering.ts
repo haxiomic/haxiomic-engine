@@ -183,7 +183,9 @@ export namespace Rendering {
 		let _overriddenObjects: ObjectWidthMaterial[] | undefined; // unset unless the overrideMaterial is a per-object function
 		if (overrideMaterial != null) {
 			if (typeof overrideMaterial === 'function') {
-				_overriddenObjects = [];
+				// Capture a `const` for the traverse closure: TS won't narrow the
+				// reassignable `_overriddenObjects` (let | undefined) inside it.
+				const overridden: ObjectWidthMaterial[] = [];
 				scene.traverse((obj) => {
 					if (isScene(obj)) return; // skip scenes as they will globally override materials
 					if (isObjectWidthMaterial(obj)) {
@@ -193,10 +195,11 @@ export namespace Rendering {
 							(obj as ObjectWidthMaterial).material = newMaterial;
 							// save the original material so we can restore it later
 							(obj as any)[SavedMaterialSymbol] = originalMaterial;
-							_overriddenObjects.push(obj as ObjectWidthMaterial);
+							overridden.push(obj as ObjectWidthMaterial);
 						}
 					}
 				});
+				_overriddenObjects = overridden;
 			} else {
 				if (isScene(scene)) {
 					_savedOverrideMaterialGlobal = scene.overrideMaterial;
