@@ -172,9 +172,18 @@ export namespace Rendering {
 		
 		// set override material (storing the previous one)
 		let _savedOverrideMaterialGlobal: unknown; // this is let unset if the overrideMaterial is not used
-		let _restoreSavedIndividualMaterials = false; // true when we override individual materials
+		// Objects whose `.material` we swapped for a per-object function override.
+		// Recorded explicitly (rather than re-discovered via a second traverse)
+		// so the restore is exact and immune to scene-graph changes during
+		// `renderer.render` — an object added/removed mid-render must not leave a
+		// swapped material stuck on it. A stuck override material is how the
+		// "useProgram: program not valid" crash arises downstream: the picking
+		// material (glslVersion GLSL3) leaks onto a beauty object and is later
+		// re-patched, producing a GLSL3 shader that still uses `gl_FragColor`.
+		let _overriddenObjects: ObjectWidthMaterial[] | undefined; // unset unless the overrideMaterial is a per-object function
 		if (overrideMaterial != null) {
 			if (typeof overrideMaterial === 'function') {
+				_overriddenObjects = [];
 				scene.traverse((obj) => {
 					if (isScene(obj)) return; // skip scenes as they will globally override materials
 					if (isObjectWidthMaterial(obj)) {
@@ -184,10 +193,10 @@ export namespace Rendering {
 							(obj as ObjectWidthMaterial).material = newMaterial;
 							// save the original material so we can restore it later
 							(obj as any)[SavedMaterialSymbol] = originalMaterial;
+							_overriddenObjects.push(obj as ObjectWidthMaterial);
 						}
 					}
 				});
-				_restoreSavedIndividualMaterials = true;
 			} else {
 				if (isScene(scene)) {
 					_savedOverrideMaterialGlobal = scene.overrideMaterial;
@@ -215,48 +224,53 @@ export namespace Rendering {
 			renderer.clear(clearColor !== false, clearDepth === true, clearStencil === true);
 		}
 
-		// render
-		renderer.render(scene, camera);
+		try {
+			// render
+			renderer.render(scene, camera);
+		} finally {
+			// All restores run in `finally` so a throw during render can never
+			// leave global state or — critically — swapped override materials
+			// stuck on scene objects.
 
-		// restore global state
-		// if we only use Rendering.renderPass() rather than renderer.render(), we don't need to restore the global state
-		// changing renderTarget can be expensive, so we should avoid it if possible
-		if (options.restoreGlobalState === true) {
-			renderer.setRenderTarget(_renderPassSnapshot.renderTarget, _renderPassSnapshot.activeCubeFace, _renderPassSnapshot.activeMipmapLevel);
-			renderer.setViewport(_renderPassSnapshot.viewport.x, _renderPassSnapshot.viewport.y, _renderPassSnapshot.viewport.z, _renderPassSnapshot.viewport.w);
-			if (clearColor !== false) {
-				renderer.setClearColor(_renderPassSnapshot.clearColor.rgb, _renderPassSnapshot.clearColor.alpha);
+			// restore global state
+			// if we only use Rendering.renderPass() rather than renderer.render(), we don't need to restore the global state
+			// changing renderTarget can be expensive, so we should avoid it if possible
+			if (options.restoreGlobalState === true) {
+				renderer.setRenderTarget(_renderPassSnapshot.renderTarget, _renderPassSnapshot.activeCubeFace, _renderPassSnapshot.activeMipmapLevel);
+				renderer.setViewport(_renderPassSnapshot.viewport.x, _renderPassSnapshot.viewport.y, _renderPassSnapshot.viewport.z, _renderPassSnapshot.viewport.w);
+				if (clearColor !== false) {
+					renderer.setClearColor(_renderPassSnapshot.clearColor.rgb, _renderPassSnapshot.clearColor.alpha);
+				}
 			}
-		}
 
-		// restore override material (only if changed)
-		if (overrideMaterial != null) {
-			if (_restoreSavedIndividualMaterials) {
-				scene.traverse((obj) => {
-					if (isScene(obj)) return; // skip scenes as they will globally override materials
-					if (isObjectWidthMaterial(obj)) {
+			// restore override material (only if changed)
+			if (overrideMaterial != null) {
+				if (typeof overrideMaterial === 'function') {
+					// Restore from the recorded list, not a fresh traverse: the
+					// scene may have changed during render, and only these exact
+					// objects were swapped.
+					for (const obj of _overriddenObjects!) {
 						const savedMaterial = (obj as any)[SavedMaterialSymbol] as Material | Material[] | undefined;
 						if (savedMaterial !== undefined) {
 							(obj as ObjectWidthMaterial).material = savedMaterial;
 							(obj as any)[SavedMaterialSymbol] = undefined; // clean up
 						}
 					}
-				});
-				_restoreSavedIndividualMaterials = false;
-			} else {
-				// global overrides
-				if (isScene(scene)) {
-					scene.overrideMaterial = _savedOverrideMaterialGlobal as Scene['overrideMaterial'];
 				} else {
-					scene.material = _savedOverrideMaterialGlobal as Mesh['material'];
+					// global overrides
+					if (isScene(scene)) {
+						scene.overrideMaterial = _savedOverrideMaterialGlobal as Scene['overrideMaterial'];
+					} else {
+						scene.material = _savedOverrideMaterialGlobal as Mesh['material'];
+					}
 				}
 			}
-		}
 
-		renderer.autoClear = _autoClear;
-		renderer.toneMapping = _toneMapping;
-		renderer.toneMappingExposure = _toneMappingExposure;
-		camera.layers.mask = _layersMask;
+			renderer.autoClear = _autoClear;
+			renderer.toneMapping = _toneMapping;
+			renderer.toneMappingExposure = _toneMappingExposure;
+			camera.layers.mask = _layersMask;
+		}
 	}
 
 	const fragmentPassCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
