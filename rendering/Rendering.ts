@@ -180,9 +180,10 @@ export namespace Rendering {
 		// "useProgram: program not valid" crash arises downstream: the picking
 		// material (glslVersion GLSL3) leaks onto a beauty object and is later
 		// re-patched, producing a GLSL3 shader that still uses `gl_FragColor`.
-		const _overriddenObjects: ObjectWidthMaterial[] = [];
+		let _overriddenObjects: ObjectWidthMaterial[] | undefined; // unset unless the overrideMaterial is a per-object function
 		if (overrideMaterial != null) {
 			if (typeof overrideMaterial === 'function') {
+				_overriddenObjects = [];
 				scene.traverse((obj) => {
 					if (isScene(obj)) return; // skip scenes as they will globally override materials
 					if (isObjectWidthMaterial(obj)) {
@@ -248,7 +249,7 @@ export namespace Rendering {
 					// Restore from the recorded list, not a fresh traverse: the
 					// scene may have changed during render, and only these exact
 					// objects were swapped.
-					for (const obj of _overriddenObjects) {
+					for (const obj of _overriddenObjects!) {
 						const savedMaterial = (obj as any)[SavedMaterialSymbol] as Material | Material[] | undefined;
 						if (savedMaterial !== undefined) {
 							(obj as ObjectWidthMaterial).material = savedMaterial;
