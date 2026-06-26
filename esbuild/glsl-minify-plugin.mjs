@@ -28,9 +28,9 @@ const glslMinifyPlugin = (options) => ({
 			// Imported lazily so the package is only required when GLSL
 			// minification is actually enabled. Consumers that don't minify
 			// (the default — buildConfig uses { minify: false }) never load it,
-			// so webpack-glsl-minify is an OPTIONAL peer dependency and isn't
-			// pulled into their tree (it transitively dragged in a deprecated
-			// glob@7 / inflight@1).
+			// so webpack-glsl-minify is NOT a declared dependency — it dragged a
+			// deprecated glob@7 / inflight@1 into every consumer's tree. Install
+			// it yourself if you enable minify:true.
 			const { GlslMinify } = await import('webpack-glsl-minify/build/minify.js');
 
 			let glsl = new GlslMinify(
