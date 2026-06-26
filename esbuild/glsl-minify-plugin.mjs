@@ -2,7 +2,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import { GlslMinify } from 'webpack-glsl-minify/build/minify.js';
 import esbuild from 'esbuild';
 
 /** @type {(options: { minify: boolean }) => esbuild.Plugin} */
@@ -26,6 +25,14 @@ const glslMinifyPlugin = (options) => ({
 
 			let noMangleList = glsl300Keywords.concat(shaderHooks);
 
+			// Imported lazily so the package is only required when GLSL
+			// minification is actually enabled. Consumers that don't minify
+			// (the default — buildConfig uses { minify: false }) never load it,
+			// so webpack-glsl-minify is an OPTIONAL peer dependency and isn't
+			// pulled into their tree (it transitively dragged in a deprecated
+			// glob@7 / inflight@1).
+			const { GlslMinify } = await import('webpack-glsl-minify/build/minify.js');
+
 			let glsl = new GlslMinify(
 				{
 					preserveAll: !options.minify,
@@ -34,7 +41,7 @@ const glslMinifyPlugin = (options) => ({
 					nomangle: noMangleList,
 				},
 				// to handle imports within the shader
-				async (filename, directory) => {
+				async (/** @type {string} */ filename, /** @type {string=} */ directory) => {
 					let filePath = directory ? path.join(directory, filename) : filename;
 					return {
 						path: filePath,
