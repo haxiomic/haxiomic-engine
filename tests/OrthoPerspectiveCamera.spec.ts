@@ -1,10 +1,11 @@
 /**
- * Tests for OrthoPerspectiveCamera
- * Run with: npx tsx src/OrthoPerspectiveCamera.test.ts
+ * Tests for OrthoPerspectiveCamera. Pure math — no browser needed, but run by
+ * the same runner as the DOM tests so `npm test` covers everything.
  */
+import { test } from '@playwright/test'
 
 import { Matrix4, OrthographicCamera, PerspectiveCamera, Vector3, Vector4 } from 'three';
-import { OrthoPerspectiveCamera } from '../OrthoPerspectiveCamera.js';
+import { OrthoPerspectiveCamera } from '../dist/math/OrthoPerspectiveCamera.js';
 
 const EPSILON = 1e-6;
 
@@ -78,6 +79,14 @@ function testOrthographicMatch() {
     const fov = 60, aspect = 16/9, near = 0.1, far = 100, focus = 10;
 
     const hybridCamera = new OrthoPerspectiveCamera(fov, aspect, near, far, 0, focus);
+    /*
+     * relativeNear defaults on and deliberately pushes the near plane to -far at
+     * blend 0, so geometry behind the camera stays visible. That is a different
+     * depth mapping to THREE.OrthographicCamera by design; disable it here so
+     * this test still asserts what it was written to assert — that the X/Y/Z
+     * projection is otherwise identical. testRelativeNearDefault covers the default.
+     */
+    hybridCamera.relativeNear = false;
     hybridCamera.updateProjectionMatrix();
 
     // Calculate expected ortho bounds
@@ -147,23 +156,65 @@ function testFocusDistanceInvariance() {
 
 // Test 4: Projection matrix element [2][3] encodes projectionBlend correctly
 function testProjectionMatrixBlendEncoding() {
-    console.log('Test 4: projectionMatrix[2][3] encodes -projectionBlend');
+    console.log('Test 4: projectionMatrix encodes the blend in element[11] / element[15]');
 
     const fov = 60, aspect = 16/9, near = 0.1, far = 100;
 
-    const blendValues = [0, 0.25, 0.5, 0.75, 1.0];
-
-    for (const blend of blendValues) {
+    /*
+     * The matrix stores -t in element[11] and 1 - t in element[15], where t is the
+     * perceptually linear blend, not projectionBlend itself. Asserting the
+     * invariants rather than recomputing t keeps this a test of intent instead of
+     * a copy of the implementation.
+     */
+    let previous = Infinity;
+    for (const blend of [0, 0.25, 0.5, 0.75, 1.0]) {
         const camera = new OrthoPerspectiveCamera(fov, aspect, near, far, blend);
         camera.updateProjectionMatrix();
 
-        // element[11] is projectionMatrix[2][3] (column 2, row 3)
-        const element11 = camera.projectionMatrix.elements[11];
-        assertClose(element11, -blend, `Blend ${blend}: element[11]`);
+        const e11 = camera.projectionMatrix.elements[11];
+        const e15 = camera.projectionMatrix.elements[15];
 
-        // element[15] is projectionMatrix[3][3] (column 3, row 3)
-        const element15 = camera.projectionMatrix.elements[15];
-        assertClose(element15, 1 - blend, `Blend ${blend}: element[15]`);
+        // element[15] - element[11] === (1 - t) - (-t) === 1, for every blend.
+        assertClose(e15 - e11, 1, `Blend ${blend}: element[15] - element[11]`);
+
+        // t rises with the blend, so element[11] = -t falls.
+        if (e11 > previous) {
+            throw new Error(`Blend ${blend}: element[11] ${e11} rose above ${previous}`);
+        }
+        previous = e11;
+    }
+
+    // Endpoints are exact: pure orthographic contributes no w, pure perspective all of it.
+    const ortho = new OrthoPerspectiveCamera(fov, aspect, near, far, 0);
+    ortho.updateProjectionMatrix();
+    assertClose(ortho.projectionMatrix.elements[11], 0, 'blend 0: element[11]');
+    assertClose(ortho.projectionMatrix.elements[15], 1, 'blend 0: element[15]');
+
+    const persp = new OrthoPerspectiveCamera(fov, aspect, near, far, 1);
+    persp.updateProjectionMatrix();
+    assertClose(persp.projectionMatrix.elements[11], -1, 'blend 1: element[11]');
+    assertClose(persp.projectionMatrix.elements[15], 0, 'blend 1: element[15]');
+
+    console.log('  ✓ Passed\n');
+}
+
+function testRelativeNearDefault() {
+    console.log('Test 8: relativeNear (on by default) extends the depth range behind the camera');
+
+    const fov = 60, aspect = 16/9, near = 0.1, far = 100, focus = 10;
+
+    const camera = new OrthoPerspectiveCamera(fov, aspect, near, far, 0, focus);
+    camera.updateProjectionMatrix();
+
+    // At blend 0 the near plane is clamped to -far, giving a depth range of 2 * far.
+    assertClose(camera.projectionMatrix.elements[10], -2 / (far - -far), 'relativeNear depth scale');
+
+    // Which is exactly what makes it differ from a plain OrthographicCamera.
+    const plain = new OrthoPerspectiveCamera(fov, aspect, near, far, 0, focus);
+    plain.relativeNear = false;
+    plain.updateProjectionMatrix();
+    if (plain.projectionMatrix.elements[10] === camera.projectionMatrix.elements[10]) {
+        throw new Error('relativeNear made no difference — the default is no longer meaningful');
     }
 
     console.log('  ✓ Passed\n');
@@ -270,23 +321,12 @@ function testIntermediateBlends() {
 }
 
 // Run all tests
-function runTests() {
-    console.log('=== OrthoPerspectiveCamera Tests ===\n');
 
-    try {
-        testPerspectiveMatch();
-        testOrthographicMatch();
-        testFocusDistanceInvariance();
-        testProjectionMatrixBlendEncoding();
-        testCloneAndCopy();
-        testOrthographicConversion();
-        testIntermediateBlends();
-
-        console.log('=== All tests passed! ===');
-    } catch (e) {
-        console.error('TEST FAILED:', e);
-        process.exit(1);
-    }
-}
-
-runTests();
+test('OrthoPerspectiveCamera: PerspectiveMatch', () => testPerspectiveMatch())
+test('OrthoPerspectiveCamera: OrthographicMatch', () => testOrthographicMatch())
+test('OrthoPerspectiveCamera: FocusDistanceInvariance', () => testFocusDistanceInvariance())
+test('OrthoPerspectiveCamera: ProjectionMatrixBlendEncoding', () => testProjectionMatrixBlendEncoding())
+test('OrthoPerspectiveCamera: CloneAndCopy', () => testCloneAndCopy())
+test('OrthoPerspectiveCamera: OrthographicConversion', () => testOrthographicConversion())
+test('OrthoPerspectiveCamera: IntermediateBlends', () => testIntermediateBlends())
+test('OrthoPerspectiveCamera: RelativeNearDefault', () => testRelativeNearDefault())
