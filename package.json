@@ -12,7 +12,9 @@
     "prepare": "tsc",
     "install": "tsc",
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "test": "tsc && npm --prefix tests test",
+    "test:demo": "node tests/serve.mjs 5177"
   },
   "dependencies": {
     "@haxiomic/event-signal": "^1.2.0",
@@ -44,5 +46,8 @@
     "./**/*.mjs": "./**/*.mjs",
     "./*.glsl": "./*.glsl",
     "./**/*.glsl": "./**/*.glsl"
+  },
+  "devDependencies": {
+    "typescript": ">=5.7.2"
   }
 }

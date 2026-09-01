@@ -560,6 +560,10 @@ export class PhysicallyBasedViewer<
 		// Don't dispose a renderer we don't own — that would kill the
 		// shared GL context for siblings still using it.
 		if (this.ownsRenderer) {
+			// The loop callback closes over `this`, and three holds it in the
+			// renderer's animation-loop slot. Clearing it is what releases this
+			// viewer and everything its scene graph reaches.
+			this.renderer.setAnimationLoop(null);
 			this.renderer.forceContextLoss();
 			this.renderer.dispose();
 		}

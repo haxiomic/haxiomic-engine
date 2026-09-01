@@ -1,0 +1,50 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/package-lock.json
+
+      # The suite is a separate package, so its dependencies install separately.
+      - run: npm ci
+      - run: npm ci --prefix tests
+
+      # Browser binaries are large and change only with the Playwright version.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/package-lock.json') }}
+
+      - run: npx playwright install --with-deps chromium
+        working-directory: tests
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+
+      # System libraries are not in the cache, so they are still needed on a hit.
+      - run: npx playwright install-deps chromium
+        working-directory: tests
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+
+      - run: npm test
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: tests/playwright-report/
+          retention-days: 7

@@ -2,3 +2,10 @@ node_modules/
 dist/
 .DS_Store
 *.tgz
+
+# repo-local tooling — never part of the published package
+tests/
+playwright.config.js
+.github/
+test-results/
+playwright-report/

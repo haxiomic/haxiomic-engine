@@ -1,0 +1,13 @@
+{
+  "name": "haxiomic-engine-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Repo-local test suite. Kept out of the library's package.json so consumers never resolve test tooling.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1"
+  }
+}
