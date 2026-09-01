@@ -251,7 +251,8 @@ export class WebSocketRobust {
 
 }
 
-type WSMessage = string | ArrayBuffer | Blob | ArrayBufferView;
+// Follows WebSocket.send — don't expand by hand, the lib's definition moves.
+type WSMessage = string | Blob | BufferSource;
 
 enum ReadyState {
 	CONNECTING = WebSocket.CONNECTING,
