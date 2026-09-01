@@ -1,6 +1,74 @@
 import { EventSignal } from "@haxiomic/event-signal"
 
 /**
+ * Which keyboard events reach `events.keyDown` / `events.keyUp`.
+ *
+ * - `document` (default): the surface keeps the keyboard while the user works
+ *   elsewhere in the page — clicking a toolbar button or empty space does not
+ *   take it away. Another interaction surface claims it, and text entry
+ *   suspends it.
+ * - `element`: strict DOM focus. The element only receives keys while it, or
+ *   something inside it, holds focus.
+ * - `shared`: as `document`, except that pointing at anything which is not a
+ *   surface releases the claim, so every surface responds again. For pages
+ *   where the keyboard drives all viewports at once until one is singled out.
+ *
+ * `events.globalKeyDown` / `globalKeyUp` are unaffected and always see every key.
+ */
+export type KeyboardScope = 'document' | 'element' | 'shared'
+
+const SURFACE_ATTR = 'data-interaction-surface'
+
+/**
+ * The surface that currently owns the keyboard. Pointer-down inside a surface
+ * claims it; pointer-down anywhere that is not a surface (toolbars, chrome,
+ * body) deliberately leaves ownership alone.
+ */
+let activeSurface: HTMLElement | null = null
+
+/**
+ * Whether a surface has been singled out — by pointing at it or by focusing
+ * it — rather than the user being elsewhere on the page. `shared` scope uses
+ * this to release the claim; `document` scope deliberately ignores it.
+ */
+let surfaceSingledOut = false
+
+/** Resolve through open shadow roots — `document.activeElement` stops at the host. */
+function deepActiveElement(): Element | null {
+    let el: Element | null = document.activeElement
+    while (el != null && el.shadowRoot != null && el.shadowRoot.activeElement != null) {
+        el = el.shadowRoot.activeElement
+    }
+    return el
+}
+
+/**
+ * Keys a focused control may use for itself: activation, focus navigation, and
+ * caret or value movement. Measured against every native control — none of them
+ * consume a plain letter or digit, and every key any of them did consume is in
+ * this set. So anything outside it is an application shortcut and falls through
+ * to the page, while these stay with whatever holds focus.
+ */
+const CONTROL_KEYS = new Set([
+    ' ', 'Enter', 'Tab', 'Escape', 'Backspace', 'Delete',
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+    'Home', 'End', 'PageUp', 'PageDown',
+])
+
+/**
+ * Is the user typing into this element? `:read-write` is the spec's own test
+ * and matches text inputs, textareas and contenteditable — nothing else.
+ */
+function isTextEntry(el: Element): boolean {
+    if (typeof el.matches !== 'function') return false
+    try {
+        return el.matches(':read-write')
+    } catch {
+        return false
+    }
+}
+
+/**
  * InteractionManager implements handles common edge cases when using pointer events for realtime content
  *
  * - Pointer capture is implemented for mouse events, so that `move` and `up` events will still fire if the pointer leaves element while the button is still pressed
@@ -28,6 +96,9 @@ export default class InteractionManager {
 
         keyDown: new EventSignal<KeyboardEvent>(),
         keyUp: new EventSignal<KeyboardEvent>(),
+
+        globalKeyDown: new EventSignal<KeyboardEvent>(),
+        globalKeyUp: new EventSignal<KeyboardEvent>(),
         
     }
 
@@ -41,16 +112,29 @@ export default class InteractionManager {
     // WebKit get's this right
     private activeButtons: { [pointerId: string]: number } = {}
 
+    readonly keyboardScope: KeyboardScope
+
     constructor(el: HTMLElement, options_: {
         disableDefaultBehavior?: boolean,
         autoCapturePointer?: boolean,
+        keyboardScope?: KeyboardScope,
     } = {}) {
         let options = {
             disableDefaultBehavior: true,
             autoCapturePointer: true,
+            keyboardScope: 'document' as KeyboardScope,
             ...options_,
         }
         this.el = el
+        this.keyboardScope = options.keyboardScope
+        // Keyboard events only reach an element that can hold focus, and a
+        // surface that responds to keys has to be reachable by keyboard alone.
+        // Set `tabindex` on the element yourself to override — `-1` keeps a
+        // decorative viewport out of the tab order while still click-focusable.
+        if (!this.el.hasAttribute('tabindex')) this.el.tabIndex = 0
+        this.el.setAttribute(SURFACE_ATTR, '')
+        // A lone surface owns the keyboard without needing a click first.
+        if (activeSurface == null) activeSurface = this.el
         this.pointerEventsSupported = window.PointerEvent !== undefined
         this.attachEventListeners()
         this.autoCapturePointer = options.autoCapturePointer
@@ -98,8 +182,16 @@ export default class InteractionManager {
         window.addEventListener('pointercancel', this.handleGlobalPointerUp, {capture: true})
         window.addEventListener('pointermove', this.handleGlobalPointerMove, {capture: true})
 
-        window.addEventListener('keydown', this.handleKeyDown, { passive: false })
-        window.addEventListener('keyup', this.handleKeyUp, { passive: false })
+        // Ownership tracking runs in capture so it settles before any app
+        // handler can move focus.
+        window.addEventListener('pointerdown', this.handleSurfaceClaim, { capture: true })
+        window.addEventListener('focusin', this.handleSurfaceFocus)
+        window.addEventListener('keydown', this.handleWindowKeyDown, { passive: false })
+        window.addEventListener('keyup', this.handleWindowKeyUp, { passive: false })
+        if (this.keyboardScope === 'element') {
+            this.el.addEventListener('keydown', this.handleElementKeyDown, { passive: false })
+            this.el.addEventListener('keyup', this.handleElementKeyUp, { passive: false })
+        }
 
         this.attached = true
     }
@@ -124,8 +216,14 @@ export default class InteractionManager {
         window.removeEventListener('pointercancel', this.handleGlobalPointerUp, {capture: true})
         window.removeEventListener('pointermove', this.handleGlobalPointerMove, {capture: true})
 
-        window.removeEventListener('keydown', this.handleKeyDown)
-        window.removeEventListener('keyup', this.handleKeyUp)
+        window.removeEventListener('pointerdown', this.handleSurfaceClaim, { capture: true })
+        window.removeEventListener('focusin', this.handleSurfaceFocus)
+        window.removeEventListener('keydown', this.handleWindowKeyDown)
+        window.removeEventListener('keyup', this.handleWindowKeyUp)
+        this.el.removeEventListener('keydown', this.handleElementKeyDown)
+        this.el.removeEventListener('keyup', this.handleElementKeyUp)
+        this.el.removeAttribute(SURFACE_ATTR)
+        if (activeSurface === this.el) activeSurface = null
 
         this.el.removeEventListener('touchstart', this.cancelEvent)
         this.attached = false
@@ -215,11 +313,80 @@ export default class InteractionManager {
         this.events.contextMenu.dispatchWithExistingEvent(e)
     }
 
-    private handleKeyDown = (e: KeyboardEvent) => {
+    private handleSurfaceClaim = (e: PointerEvent) => {
+        const target = e.target as Element | null
+        const surface = target != null && typeof target.closest === 'function'
+            ? target.closest(`[${SURFACE_ATTR}]`) as HTMLElement | null
+            : null
+        // Only a surface takes ownership. Clicks on chrome leave it where it is;
+        // `shared` scope reads surfaceSingledOut to react to them instead.
+        surfaceSingledOut = surface != null
+        if (surface != null) activeSurface = surface
+    }
+
+    /**
+     * Focus claims the surface too. Without this, tabbing to a viewport moves
+     * DOM focus while the keyboard claim stays where it was last pointed, and
+     * keys arrive at a different viewport than the focused one.
+     */
+    private handleSurfaceFocus = (e: FocusEvent) => {
+        const target = e.target as Element | null
+        const surface = target != null && typeof target.closest === 'function'
+            ? target.closest(`[${SURFACE_ATTR}]`) as HTMLElement | null
+            : null
+        if (surface == null) return
+        activeSurface = surface
+        surfaceSingledOut = true
+    }
+
+    private handleWindowKeyDown = (e: KeyboardEvent) => {
+        this.events.globalKeyDown.dispatchWithExistingEvent(e)
+        if (this.keyboardScope === 'element') return
+        if (!this.ownsKeyboard(e)) return
         this.events.keyDown.dispatchWithExistingEvent(e)
     }
-    private handleKeyUp = (e: KeyboardEvent) => {
+    private handleWindowKeyUp = (e: KeyboardEvent) => {
+        this.events.globalKeyUp.dispatchWithExistingEvent(e)
+        if (this.keyboardScope === 'element') return
+        // Ownership applies, the text-entry suspension does not: a key pressed
+        // before focus moved into an input must still deliver its release, or
+        // consumers tracking held keys are stuck with a key held forever.
+        if (!this.hasClaim()) return
         this.events.keyUp.dispatchWithExistingEvent(e)
+    }
+
+    private handleElementKeyDown = (e: KeyboardEvent) => {
+        if (!this.focusYieldsKey(e)) return
+        this.events.keyDown.dispatchWithExistingEvent(e)
+    }
+    private handleElementKeyUp = (e: KeyboardEvent) => {
+        this.events.keyUp.dispatchWithExistingEvent(e)
+    }
+
+    /**
+     * Holds the claim when it was the surface last pointed at or focused — or,
+     * under `shared`, when no surface has been singled out at all.
+     */
+    private hasClaim(): boolean {
+        if (activeSurface === this.el) return true
+        return this.keyboardScope === 'shared' && !surfaceSingledOut
+    }
+
+    /**
+     * A key event targets whatever holds focus, so the focused element gets
+     * first refusal: everything while the user is typing into it, and the keys
+     * controls use otherwise. What is left over is an application shortcut.
+     */
+    private focusYieldsKey(e: KeyboardEvent): boolean {
+        const focused = deepActiveElement()
+        if (focused == null || focused === document.body || focused === this.el) return true
+        if (isTextEntry(focused)) return false
+        return !CONTROL_KEYS.has(e.key)
+    }
+
+    /** The surface receives a key when it holds the claim and focus yields it. */
+    private ownsKeyboard(e: KeyboardEvent): boolean {
+        return this.hasClaim() && this.focusYieldsKey(e)
     }
 
 }
