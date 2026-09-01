@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>InteractionManager keyboard fixture</title>
+<style>
+  body { font: 13px system-ui; display: flex; gap: 10px; padding: 10px }
+  canvas { width: 200px; height: 120px; background: #223; display: block }
+  .chrome { display: flex; flex-direction: column; gap: 6px; width: 240px }
+</style>
+
+<canvas id="s1"></canvas>
+<canvas id="s2"></canvas>
+
+<div class="chrome">
+  <input id="text" placeholder="text">
+  <button id="button">button</button>
+  <select id="select"><option>a</option><option>b</option></select>
+  <input id="range" type="range">
+  <div id="host"></div>
+  <p id="chrome-text">plain non-focusable text</p>
+</div>
+
+<script type="importmap">
+{ "imports": { "@haxiomic/event-signal": "/node_modules/@haxiomic/event-signal/dist/esm/EventSignal.js" } }
+</script>
+<script type="module">
+import InteractionManager from '/dist/interaction/InteractionManager.js'
+
+document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML =
+    `<input id="shadow-input" placeholder="shadow input">`
+
+const scope = new URL(location.href).searchParams.get('scope') ?? 'document'
+window.received = { s1: [], s2: [], global: [] }
+
+for (const id of ['s1', 's2']) {
+    const im = new InteractionManager(document.getElementById(id), { keyboardScope: scope })
+    im.events.keyDown.addListener(e => window.received[id].push(e.key))
+    im.events.globalKeyDown.addListener(e => window.received.global.push(e.key))
+}
+window.reset = () => { window.received = { s1: [], s2: [], global: [] } }
+window.ready = true
+</script>

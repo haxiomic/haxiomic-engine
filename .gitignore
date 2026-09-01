@@ -3,3 +3,5 @@ dist/
 .DS_Store
 
 *.tgz
+test-results/
+playwright-report/

@@ -1,0 +1,143 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>InteractionManager — keyboard ownership</title>
+<!--
+  Manual companion to keyboard.spec.js. Click any control, press a key, and see
+  whether the surfaces also received it. Served by tests/serve.mjs; loads the
+  built module directly, so run `npm run build` first.
+-->
+<style>
+  *{box-sizing:border-box} body{font:12.5px/1.4 system-ui;margin:0;background:#fafafa;color:#111}
+  header{padding:9px 14px;background:#111;color:#fff;display:flex;gap:14px;align-items:center;position:sticky;top:0;z-index:9}
+  header h1{font-size:13px;margin:0} header label{display:flex;gap:4px;align-items:center;cursor:pointer}
+  #focus{margin-left:auto;font-family:ui-monospace,monospace;background:#222;padding:3px 8px;border-radius:3px}
+  #focus b{color:#6ee7a8}
+  main{display:grid;grid-template-columns:1fr 300px;gap:14px;padding:14px;align-items:start}
+  table{border-collapse:collapse;width:100%;background:#fff}
+  th{text-align:left;font-size:10px;text-transform:uppercase;color:#666;padding:5px 6px;border-bottom:1px solid #ddd}
+  td{padding:4px 6px;border-bottom:1px solid #f0f0f0}
+  td.c{width:180px} td.c>*{max-width:170px;font:inherit}
+  td.n{font-family:ui-monospace,monospace;font-size:11px;white-space:nowrap}
+  td.r{font-family:ui-monospace,monospace;font-size:11px;white-space:nowrap;color:#16a34a}
+  td.r.through{color:#b45309;font-weight:600}
+  tr.on{background:#fffbeb}
+  .s{border:3px solid #ddd;border-radius:6px;background:#fff;margin-bottom:8px;overflow:hidden}
+  .s.owns{border-color:#16a34a} .s.flash{border-color:#f59e0b}
+  .s h2{font-size:11px;margin:0;padding:4px 8px;background:#f3f4f6;display:flex;justify-content:space-between}
+  .s canvas{display:block;width:100%;height:70px;background:#1e293b}
+  .s .k{font-family:ui-monospace,monospace;padding:3px 8px;border-top:1px solid #eee}
+  #log{font-family:ui-monospace,monospace;font-size:11px;white-space:pre-wrap;background:#0b0b0b;color:#d7d7d7;border-radius:6px;padding:8px;height:220px;overflow:auto}
+</style>
+
+<header>
+  <h1>keyboard ownership</h1>
+  <label><input type="radio" name="scope" value="document" checked> document</label>
+  <label><input type="radio" name="scope" value="element"> element</label>
+  <label><input type="radio" name="scope" value="shared"> shared</label>
+  <button id="reset">reset</button>
+  <span id="focus">focus: <b>—</b></span>
+</header>
+
+<main>
+  <table><thead><tr><th>control</th><th>selector</th><th>:read-write</th><th>last key</th></tr></thead><tbody id="rows"></tbody></table>
+  <div>
+    <div class="s" id="s1"><h2>Surface 1 <span class="b"></span></h2><canvas></canvas><div class="k">0</div></div>
+    <div class="s" id="s2"><h2>Surface 2 <span class="b"></span></h2><canvas></canvas><div class="k">0</div></div>
+    <p style="color:#666">plain non-focusable text — click to point away from every surface</p>
+    <div id="log"></div>
+  </div>
+</main>
+
+<script type="importmap">
+{ "imports": { "@haxiomic/event-signal": "/node_modules/@haxiomic/event-signal/dist/esm/EventSignal.js" } }
+</script>
+<script type="module">
+import InteractionManager from '/dist/interaction/InteractionManager.js'
+
+const CONTROLS = [
+    ['text entry', '<input placeholder=text>'], ['text entry', '<input type=password>'],
+    ['text entry', '<input type=email>'], ['text entry', '<input type=search>'],
+    ['text entry', '<textarea rows=1></textarea>'], ['text entry', '<div contenteditable>edit me</div>'],
+    ['text entry', '<input value=readonly readonly>'],
+    ['stepper', '<input type=number value=1>'], ['stepper', '<input type=range>'],
+    ['stepper', '<input type=date>'], ['stepper', '<input type=time>'], ['stepper', '<input type=color>'],
+    ['activation', '<button>button</button>'], ['activation', '<input type=submit>'],
+    ['activation', '<input type=reset>'], ['activation', '<a href="#x">link</a>'],
+    ['activation', '<details><summary>summary</summary>body</details>'], ['activation', '<input type=file>'],
+    ['selection', '<input type=checkbox>'], ['selection', '<input type=radio name=r>'],
+    ['selection', '<select><option>a</option><option>b</option></select>'],
+    ['selection', '<select multiple size=2><option>a</option><option>b</option></select>'],
+    ['aria', '<div role=textbox tabindex=0>role=textbox</div>'], ['aria', '<div role=button tabindex=0>role=button</div>'],
+    ['aria', '<div role=slider tabindex=0>role=slider</div>'],
+    ['other', '<div tabindex=0>plain focusable div</div>'], ['other', '<div data-shadow></div>'],
+    ['other', '<video controls style="height:30px"></video>'],
+]
+
+const rows = document.getElementById('rows'), log = document.getElementById('log')
+let group = ''
+CONTROLS.forEach(([g, html], i) => {
+    if (g !== group) { group = g; rows.insertAdjacentHTML('beforeend', `<tr><td colspan=4 style="background:#eef2ff;font-weight:600">${g}</td></tr>`) }
+    rows.insertAdjacentHTML('beforeend', `<tr id="r${i}"><td class="c">${html}</td><td class="n"></td><td class="rw"></td><td class="r">—</td></tr>`)
+    const cell = document.querySelector(`#r${i} .c`)
+    const shadow = cell.querySelector('[data-shadow]')
+    if (shadow) shadow.attachShadow({ mode: 'open' }).innerHTML = '<input placeholder="shadow input" style="font:inherit">'
+    document.querySelector(`#r${i} .n`).textContent = html.replace(/<(\w+)([^>]*)>.*/s, '$1$2').slice(0, 30)
+})
+
+const surfaces = ['s1', 's2'].map(id => ({
+    id, root: document.getElementById(id), el: document.querySelector(`#${id} canvas`), n: 0, im: null,
+}))
+let pending = null
+window.addEventListener('keydown', e => {
+    pending = { key: e.key, got: [] }
+    setTimeout(() => { if (pending) { mark(pending.key, pending.got); pending = null } }, 0)
+}, true)
+
+function build(scope) {
+    for (const s of surfaces) { try { s.im?.removeEventListeners() } catch {} }
+    for (const s of surfaces) {
+        s.im = new InteractionManager(s.el, { keyboardScope: scope, disableDefaultBehavior: false })
+        s.im.events.keyDown.addListener(e => {
+            s.root.querySelector('.k').textContent = ++s.n
+            s.root.classList.add('flash'); setTimeout(() => s.root.classList.remove('flash'), 150)
+            pending?.got.push(s.id)
+            say(`${s.id} ← ${JSON.stringify(e.key)}   focus: ${name(deep())}`, '#fbbf24')
+        })
+    }
+    log.textContent = ''; say(`── keyboardScope: ${scope} ──`, '#6ee7a8'); refresh()
+}
+const deep = () => { let e = document.activeElement; while (e?.shadowRoot?.activeElement) e = e.shadowRoot.activeElement; return e }
+const name = el => el == null || el === document.body ? 'body (nothing focused)'
+    : surfaces.find(s => s.el === el)?.id ?? el.tagName.toLowerCase()
+function row() { const tr = deep()?.closest?.('tr'); return tr?.id?.startsWith('r') ? tr : null }
+function mark(key, got) {
+    const tr = row(); if (!tr) return
+    const c = tr.querySelector('.r')
+    c.textContent = `${key === ' ' ? 'Space' : key} → ${got.length ? 'ALSO ' + got.join(',') : 'consumed'}`
+    c.className = got.length ? 'r through' : 'r'
+}
+function say(t, colour = '#d7d7d7') { const d = document.createElement('div'); d.textContent = t; d.style.color = colour; log.append(d); log.scrollTop = 1e9 }
+function refresh() {
+    const a = deep()
+    document.querySelector('#focus b').textContent = name(a)
+    for (const s of surfaces) { s.root.classList.toggle('owns', a === s.el); s.root.querySelector('.b').textContent = a === s.el ? 'has keyboard' : '' }
+    for (const tr of rows.querySelectorAll('tr')) tr.classList.remove('on')
+    row()?.classList.add('on')
+    CONTROLS.forEach((_, i) => {
+        const host = document.querySelector(`#r${i} .c`)?.firstElementChild
+        const t = host?.shadowRoot?.firstElementChild ?? host
+        let rw; try { rw = t?.matches(':read-write') } catch { rw = '?' }
+        document.querySelector(`#r${i} .rw`).textContent = String(rw)
+    })
+}
+document.addEventListener('focusin', refresh)
+document.addEventListener('click', () => setTimeout(refresh, 0))
+document.getElementById('reset').onclick = () => {
+    for (const s of surfaces) { s.n = 0; s.root.querySelector('.k').textContent = '0' }
+    for (const c of rows.querySelectorAll('.r')) { c.textContent = '—'; c.className = 'r' }
+    log.textContent = ''
+}
+for (const r of document.querySelectorAll('input[name=scope]')) r.onchange = () => r.checked && build(r.value)
+build('document')
+window.ready = true
+</script>
