@@ -531,6 +531,10 @@ export namespace Rendering {
 			rawCopyMaterials[key].dispose();
 			delete rawCopyMaterials[key];
 		}
+		for (let key in copyMaterials) {
+			copyMaterials[key].dispose();
+			delete copyMaterials[key];
+		}
 
 		resetState(_renderPassSnapshot);
 		resetState(_tempGlobalState);
