@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, ArrayCamera, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, Layers, LinearToneMapping, Matrix4, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, Scene, Texture, ToneMapping, Vector3, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
+import { ACESFilmicToneMapping, AgXToneMapping, AmbientLight, ArrayCamera, AxesHelper, Camera, CineonToneMapping, Color, ColorManagement, DirectionalLight, DirectionalLightHelper, GridHelper, Layers, LinearToneMapping, Material, Matrix4, Mesh, NoToneMapping, Object3D, PCFSoftShadowMap, PerspectiveCamera, PMREMGenerator, REVISION, Scene, Texture, ToneMapping, Vector3, WebGLRenderer, WebGLRendererParameters, WebGLRenderTarget } from "three";
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
@@ -449,6 +449,14 @@ export class PhysicallyBasedViewer<
 	}
 
 	private _lastRenderTime_ms: number = NaN;
+	/**
+	 * three binds one module-level DFG LUT texture into every PBR program
+	 * and, on upload, adds this renderer's `dispose` listener to it. The
+	 * singleton is never disposed, so after `renderer.dispose()` that listener
+	 * keeps the whole renderer alive. Captured while rendering so dispose() can
+	 * still reach it once the consumer has emptied the scene.
+	 */
+	private _sharedDFGLUT: Texture | null = null;
 
 	/**
 	 * Called automatically every frame by the WebGLRenderer (`setAnimationLoop`). Use `customRender` or subscribe to the `beforeFrameRender` event to customize rendering.
@@ -539,6 +547,30 @@ export class PhysicallyBasedViewer<
 				restoreGlobalState: true,
 			});
 		}
+
+		if (this._sharedDFGLUT === null) {
+			this._sharedDFGLUT = this.findSharedDFGLUT();
+		}
+	}
+
+	private findSharedDFGLUT(): Texture | null {
+		let found: Texture | null = null;
+		this.scene.traverse((object) => {
+			if (found !== null) return;
+			const material = (object as Mesh).material as Material | Material[] | undefined;
+			if (!material) return;
+			for (const m of Array.isArray(material) ? material : [material]) {
+				const properties = this.renderer.properties.get(m) as {
+					uniforms?: { dfgLUT?: { value: unknown } };
+				};
+				const lut = properties.uniforms?.dfgLUT?.value;
+				if (lut instanceof Texture) {
+					found = lut;
+					return;
+				}
+			}
+		});
+		return found;
 	}
 
 	customRender: undefined | ((renderer: WebGLRenderer, renderPassOptions: Rendering.RenderPassOptions) => void) = undefined;
@@ -566,6 +598,11 @@ export class PhysicallyBasedViewer<
 			this.renderer.setAnimationLoop(null);
 			this.renderer.forceContextLoss();
 			this.renderer.dispose();
+			// Re-emitting the LUT's dispose event runs every renderer's listener:
+			// ours detaches (its GL state is already gone), live renderers
+			// re-upload the 16x16 texture on their next frame.
+			this._sharedDFGLUT?.dispatchEvent({ type: 'dispose' });
+			this._sharedDFGLUT = null;
 		}
 	}
 
