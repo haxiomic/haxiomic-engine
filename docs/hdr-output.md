@@ -1,19 +1,26 @@
 # HDR canvas output
 
-The engine provides two independent helpers:
+The engine provides an opt-in presentation controller and explicit shader building blocks:
 
 - `HdrOutput` owns a renderer's drawing buffer and selects an HDR presentation route.
-- `applyHdrToneMapping` extends an ACES or Khronos PBR Neutral final `ShaderMaterial` pass to a target peak, then encodes extended sRGB.
+- `HdrOutputMaterial` is a final texture-to-canvas pass with typed source, tone mapping, exposure and headroom settings.
+- `hdrToneMappingGlsl` exports pure GLSL functions for custom final passes. It declares no uniforms and changes no materials.
 
-Both are opt-in. An unused/disabled controller changes no canvas state and attaches no listeners. The shader helper leaves a material unchanged until a supported HDR curve is requested.
+An unused/disabled controller changes no canvas state and attaches no listeners. The output material has a fixed shader; changing its settings updates uniforms without rewriting or recompiling it.
 
 ```ts
 import { HdrOutput } from 'haxiomic-engine/rendering/HdrOutput';
-import { applyHdrToneMapping } from 'haxiomic-engine/rendering/HdrToneMapping';
-import { ACESFilmicToneMapping, HalfFloatType, SRGBColorSpace } from 'three';
+import { HdrOutputMaterial } from 'haxiomic-engine/materials/HdrOutputMaterial';
+import { Rendering } from 'haxiomic-engine/rendering/Rendering';
+import { ACESFilmicToneMapping, HalfFloatType, SRGBColorSpace, WebGLRenderTarget } from 'three';
 
 renderer.outputColorSpace = SRGBColorSpace;
-renderer.toneMapping = ACESFilmicToneMapping;
+const sceneTarget = new WebGLRenderTarget(width, height, { type: HalfFloatType });
+const output = new HdrOutputMaterial({
+    source: sceneTarget.texture,
+    toneMapping: ACESFilmicToneMapping,
+    exposure: 1,
+});
 const hdr = new HdrOutput(renderer, {
     enabled: true,
     headroom: 'auto',
@@ -22,25 +29,55 @@ const hdr = new HdrOutput(renderer, {
     allowCompositorTrigger: false,
 });
 
-// Use HalfFloatType for scene and intermediate targets to preserve values > 1.
-// Leave intermediate textures in linear working space. finalMaterial must
-// output linear sRGB, with adjacent standard chunks at the end of main():
-// #include <tonemapping_fragment>
-// #include <colorspace_fragment>
 function renderFrame() {
-    // Resize first; update before drawing anything into the canvas.
+    // Resize renderer and sceneTarget first. Preserve linear, unclipped values
+    // through all intermediate passes; output owns the final tone mapping.
     hdr.update();
-    applyHdrToneMapping(finalMaterial, renderer.toneMapping, hdr.targetHeadroom);
-    // Render your scene/postprocessing, ending in finalMaterial to the canvas.
+    renderer.setRenderTarget(sceneTarget);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    output.headroom = hdr.targetHeadroom;
+    Rendering.shaderMaterialPass(renderer, {
+        shader: output,
+        target: null,
+        restoreGlobalState: true,
+    });
 }
 
-// Disabling immediately restores the original drawing-buffer format.
-// Update the shader before the next frame to select its SDR branch.
-hdr.enabled = false;
+hdr.enabled = false; // The next frame selects SDR through targetHeadroom = 1.
+// On teardown, before disposing the renderer:
 hdr.dispose();
+output.dispose();
+sceneTarget.dispose();
 ```
 
-This is a presentation facility, not automatic HDR scene rendering. The engine's default `PhysicallyBasedViewer` render and three's ordinary material tone mapping still clamp highlights; custom render pipelines need an unclipped source and a final HDR pass. Call the shader helper with the actual tone mapping used by that pass. Apply it only to canvas output, not intermediate targets. Material changes after patching must retain the added declarations and output branch; cloning patched materials is unsupported.
+This is a presentation facility, not automatic HDR scene rendering. The engine's default `PhysicallyBasedViewer` render and three's ordinary material tone mapping still clamp highlights. Custom render pipelines need an unclipped linear source and an explicit final HDR pass.
+
+`HdrOutputMaterial` owns its tone mapping and exposure independently of the renderer settings. Its `toneMapped: false` prevents the renderer from supplying an additional tone-mapping transform. Only ACES and Neutral are accepted. At headroom 1 their curves match ordinary SDR output within floating-point/encoding precision. Source alpha is preserved. Clone/copy follow three's normal uniform semantics; rebind the source texture after cloning a material that reads a render target.
+
+## Custom final shaders
+
+Compose the exported functions when writing your shader, alongside your own uniforms and bloom/compositing code:
+
+```ts
+import { hdrToneMappingGlsl } from 'haxiomic-engine/rendering/HdrToneMapping';
+
+const fragmentShader = /* glsl */`
+    uniform sampler2D source;
+    uniform float exposure;
+    uniform float headroom;
+    varying vec2 vUv;
+    ${hdrToneMappingGlsl}
+    void main() {
+        vec4 pixel = texture2D(source, vUv);
+        vec3 mapped = hdrAcesToneMapping(pixel.rgb * exposure, headroom);
+        // Or hdrNeutralToneMapping(...) for Khronos PBR Neutral.
+        gl_FragColor = vec4(hdrLinearToSrgb(mapped), pixel.a);
+    }
+`;
+```
+
+Create that material with `toneMapped: false`. Supply your own uniforms, and update `headroom` from `hdr.targetHeadroom` after `hdr.update()`. Tone-map once after combining scene and bloom in linear light, then encode once at canvas output. Do not add the ordinary tone-mapping or colour-space chunks after the explicit output transform. The exported functions operate on linear sRGB and return linear sRGB; `hdrLinearToSrgb` applies sign-preserving extended sRGB encoding. Headroom must be finite and at least 1.
 
 ## Presentation routes
 
@@ -60,7 +97,7 @@ The WebGPU trigger has a window-wide effect: other float canvases may also show 
 
 This first implementation supports extended sRGB only. `HdrOutput` fails closed if either three's output colour space or WebGL's drawing-buffer colour space changes away from sRGB. It deliberately leaves both colour-space settings alone. Rec.2020-linear and Display P3 need matching colour conversion and output shaders.
 
-The shader helper supports `ACESFilmicToneMapping` and `NeutralToneMapping`. Other curves retain their ordinary three output. At headroom 1 it uses three's original shader chunks exactly. The HDR ACES extension blends the original fit into an extended shoulder; Neutral raises the compression peak. These are artistic extensions, not standardized HDR ACES transforms. The extension can change upper mid-tones and highlight colour. The original shadow and low-mid-tone behaviour is retained.
+The output material supports `ACESFilmicToneMapping` and `NeutralToneMapping`. Custom shaders can select the corresponding pure GLSL function directly. At headroom 1 the functions use the SDR curves. The HDR ACES extension blends the original fit into an extended shoulder; Neutral raises the compression peak. These are artistic extensions, not standardized HDR ACES transforms. The extension can change upper mid-tones and highlight colour. The original shadow and low-mid-tone behaviour is retained.
 
 ## Ownership and lifecycle
 

@@ -33,7 +33,7 @@ const owners = new WeakMap<WebGLRenderer, HdrOutput>();
  * Opt-in HDR presentation for one renderer. Call update() after resizing and
  * before rendering the final canvas pass. This configures presentation only:
  * your pipeline must preserve and encode values above SDR white itself.
- * Use applyHdrToneMapping for an ACES/Neutral final linear-sRGB shader pass.
+ * Use HdrOutputMaterial or explicit GLSL for the final linear-sRGB shader pass.
  * One controller owns the whole renderer, including all shared-canvas panes.
  */
 export class HdrOutput {
@@ -105,7 +105,7 @@ export class HdrOutput {
         const gl = this.renderer.getContext() as HdrContext;
         if (gl.isContextLost()) return;
         this.startListening();
-        // The companion shader assumes extended sRGB, so fail closed on a
+        // The provided output material assumes extended sRGB, so fail closed on a
         // consumer colour-space change rather than displaying wrong colours.
         if (this.renderer.outputColorSpace !== SRGBColorSpace || gl.drawingBufferColorSpace !== 'srgb') {
             if (this.savedFormat !== null) this.restore();

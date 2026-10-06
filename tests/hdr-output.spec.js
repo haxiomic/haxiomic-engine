@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { ACESFilmicToneMapping, NeutralToneMapping, CineonToneMapping, ShaderMaterial, SRGBColorSpace } from 'three';
+import { ACESFilmicToneMapping, NeutralToneMapping, CineonToneMapping, SRGBColorSpace } from 'three';
 import { HdrOutput } from '../dist/rendering/HdrOutput.js';
-import { applyHdrToneMapping } from '../dist/rendering/HdrToneMapping.js';
+import { HdrOutputMaterial } from '../dist/materials/HdrOutputMaterial.js';
 
 function fixture({ official = true, gpu, rejectBuffer = false, initialFormat = 0x8058, gpuContext = null } = {}) {
     const query = Object.assign(new EventTarget(), { matches: true });
@@ -95,20 +95,27 @@ test('asynchronous trigger cancellation and partial failures destroy devices and
     g.hdr.dispose(); f.hdr.dispose();
 });
 
-test('shader remains untouched for SDR; HDR patches once and restores the SDR branch', () => {
-    const material = new ShaderMaterial({fragmentShader: 'void main() { gl_FragColor = vec4(1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}'});
-    const original = material.fragmentShader;
-    applyHdrToneMapping(material, ACESFilmicToneMapping, 1);
-    expect(material.fragmentShader).toBe(original);
-    applyHdrToneMapping(material, ACESFilmicToneMapping, 4);
+test('explicit output material keeps its shader fixed and clones independent settings', () => {
+    const material = new HdrOutputMaterial({toneMapping: NeutralToneMapping, exposure: 2, headroom: 4});
+    const shader = material.fragmentShader;
     const version = material.version;
-    applyHdrToneMapping(material, NeutralToneMapping, 2);
-    expect(material.version).toBe(version); expect(material.uniforms.displayToneCurve.value).toBe(1);
-    applyHdrToneMapping(material, CineonToneMapping, 4);
-    expect(material.uniforms.displayHdr.value).toBe(false);
-    applyHdrToneMapping(material, ACESFilmicToneMapping, 1);
-    expect(material.uniforms.displayHdr.value).toBe(false);
-    expect(() => applyHdrToneMapping(new ShaderMaterial(), ACESFilmicToneMapping, 4)).toThrow(/chunks/);
+    const clone = material.clone();
+    const copy = new HdrOutputMaterial().copy(material);
+    expect(copy.toneMapping).toBe(NeutralToneMapping);
+    expect(copy.exposure).toBe(2); expect(copy.headroom).toBe(4);
+    copy.headroom = 1; expect(material.headroom).toBe(4);
+    expect(clone.toneMapping).toBe(NeutralToneMapping);
+    expect(clone.exposure).toBe(2); expect(clone.headroom).toBe(4);
+    clone.headroom = 1; clone.exposure = 0.5; clone.toneMapping = ACESFilmicToneMapping;
+    expect(clone.fragmentShader).toBe(shader);
+    expect(clone.headroom).toBe(1); expect(material.headroom).toBe(4);
+    expect(material.exposure).toBe(2); expect(material.toneMapping).toBe(NeutralToneMapping);
+    material.headroom = 2; material.toneMapping = ACESFilmicToneMapping;
+    expect(material.fragmentShader).toBe(shader); expect(material.version).toBe(version);
+    expect(material.toneMapped).toBe(false);
+    for (const n of [NaN, Infinity, 0.5]) expect(() => { material.headroom = n; }).toThrow();
+    for (const n of [NaN, Infinity, -1]) expect(() => { material.exposure = n; }).toThrow();
+    expect(() => { material.toneMapping = CineonToneMapping; }).toThrow();
 });
 
 test('browser default and float buffer resize/disable', async ({page}) => {
@@ -243,4 +250,63 @@ test('opt-in compositor trigger creates and removes its WebGPU canvas', async ()
         expect(await page.evaluate(() => window.hdrDemo.renderer.getContext().drawingBufferFormat)).toBe(0x8058);
         expect(errors).toEqual([]);
     } finally { await browser.close(); }
+});
+
+
+test('output material at headroom 1 matches three SDR curves and owns its exposure', async ({page}) => {
+    await page.goto('/tests/hdr-output.html');
+    await page.waitForFunction(() => window.ready);
+    const result = await page.evaluate(async () => {
+        const {ShaderMaterial, ACESFilmicToneMapping, NeutralToneMapping} = await import('three');
+        const {renderer, outputMaterial, outputMesh, sourceTarget, material, draw} = window.hdrDemo;
+        const reference = new ShaderMaterial({
+            uniforms: {source: {value: sourceTarget.texture}},
+            vertexShader: outputMaterial.vertexShader,
+            fragmentShader: `varying vec2 vUv; uniform sampler2D source;
+                void main() {
+                    gl_FragColor = texture2D(source, vUv);
+                    #include <tonemapping_fragment>
+                    #include <colorspace_fragment>
+                }`,
+            depthTest: false, depthWrite: false,
+        });
+        const gl = renderer.getContext();
+        const pixel = new Uint8Array(4);
+        const read = () => { draw(); gl.readPixels(100, 180, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel); return [...pixel]; };
+        let maxDifference = 0;
+        for (const curve of [ACESFilmicToneMapping, NeutralToneMapping]) {
+            for (const exposure of [0.25, 1, 8]) {
+                for (const tint of [[1, 1, 1], [1, 0.4, 0.1], [0.2, 0.5, 1]]) {
+                    for (const level of [0, 0.18, 0.5, 1, 2, 4, 16]) {
+                        renderer.toneMapping = curve;
+                        renderer.toneMappingExposure = exposure;
+                        outputMaterial.toneMapping = curve;
+                        outputMaterial.exposure = exposure;
+                        material.uniforms.level.value = level;
+                        material.uniforms.tint.value.set(...tint);
+                        outputMesh.material = reference;
+                        const expected = read();
+                        outputMesh.material = outputMaterial;
+                        // A different renderer exposure must not apply a second transform.
+                        renderer.toneMappingExposure = 99;
+                        const actual = read();
+                        maxDifference = Math.max(maxDifference, ...actual.map((v, i) => Math.abs(v - expected[i])));
+                    }
+                }
+            }
+        }
+        const clone = outputMaterial.clone();
+        clone.source = sourceTarget.texture;
+        clone.headroom = 1;
+        clone.exposure = outputMaterial.exposure;
+        outputMesh.material = clone;
+        const clonedPixel = read();
+        outputMesh.material = outputMaterial;
+        const originalPixel = read();
+        clone.dispose(); reference.dispose();
+        return {maxDifference, clonedPixel, originalPixel, error: gl.getError()};
+    });
+    expect(result.error).toBe(0);
+    expect(result.maxDifference).toBeLessThanOrEqual(1);
+    expect(result.clonedPixel).toEqual(result.originalPixel);
 });

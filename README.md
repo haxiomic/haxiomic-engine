@@ -37,5 +37,6 @@ Add `/// <reference types="haxiomic-engine" />` to your project so that .glsl an
 **HDR output**
 
 Opt-in HDR canvas presentation and final-pass tone mapping are available through
-`rendering/HdrOutput` and `rendering/HdrToneMapping`. See [HDR output](docs/hdr-output.md)
+`rendering/HdrOutput`, `materials/HdrOutputMaterial`, and the pure GLSL functions in
+`rendering/HdrToneMapping`. See [HDR output](docs/hdr-output.md)
 for integration, the experimental macOS compositor workaround, and the demo.
