@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebGL HDR output</title>
+<link rel="icon" href="data:,">
+<style>
+body { margin: 24px; background: #222; color: white; font: 16px system-ui; }
+canvas { display: block; width: 720px; height: 240px; max-width: 100%; margin-top: 16px; }
+label { margin-right: 20px; }
+</style>
+<h1>WebGL HDR output</h1>
+<p>The patches contain linear levels 0.18, 0.5, 1, 2, 4, 16. The white bar is SDR reference white.</p>
+<label><input id="enabled" type="checkbox">HDR</label>
+<label><input id="trigger" type="checkbox">Experimental macOS compositor trigger</label>
+<label>Curve <select id="curve"><option value="aces">ACES</option><option value="neutral">Neutral</option></select></label>
+<label>Headroom <input id="headroom" type="number" min="1" max="16" value="4"></label>
+<canvas id="canvas"></canvas>
+<div style="width:720px;max-width:100%;height:32px;background:white"></div>
+<p id="status"></p>
+<p>HDR luminance must be judged on an HDR screen. Float readback alone does not prove HDR presentation.</p>
+<script type="importmap">
+{ "imports": { "three": "/node_modules/three/build/three.module.js", "three/webgpu": "/node_modules/three/build/three.webgpu.js", "three/tsl": "/node_modules/three/build/three.tsl.js", "three/src/": "/node_modules/three/src/" } }
+</script>
+<script type="module">
+import { WebGLRenderer, WebGLRenderTarget, HalfFloatType, Vector2, Vector3, ShaderMaterial, Scene, Mesh, PlaneGeometry, OrthographicCamera, ACESFilmicToneMapping, NeutralToneMapping } from 'three';
+import { HdrOutput } from '/dist/rendering/HdrOutput.js';
+import { HdrOutputMaterial } from '/dist/materials/HdrOutputMaterial.js';
+const renderer = new WebGLRenderer({canvas: document.querySelector('#canvas'), antialias: false});
+renderer.setSize(720, 240, false);
+renderer.toneMapping = ACESFilmicToneMapping;
+const material = new ShaderMaterial({
+    toneMapped: false,
+    uniforms: { level: {value: -1}, tint: {value: new Vector3(1, 1, 1)} },
+    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform float level; uniform vec3 tint;
+        void main() {
+            float patchIndex = floor(vUv.x * 6.0);
+            float x = patchIndex < 1.0 ? 0.18 : patchIndex < 2.0 ? 0.5 : patchIndex < 3.0 ? 1.0 : patchIndex < 4.0 ? 2.0 : patchIndex < 5.0 ? 4.0 : 16.0;
+            gl_FragColor = vec4(vec3(level >= 0.0 ? level : x) * tint, 1.0);
+        }`,
+});
+const scene = new Scene();
+scene.add(new Mesh(new PlaneGeometry(2, 2), material));
+const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const sourceTarget = new WebGLRenderTarget(720, 240, {type: HalfFloatType});
+const outputMaterial = new HdrOutputMaterial({source: sourceTarget.texture});
+const outputScene = new Scene();
+const outputMesh = new Mesh(new PlaneGeometry(2, 2), outputMaterial);
+outputScene.add(outputMesh);
+const size = new Vector2();
+const hdr = new HdrOutput(renderer, {onChange: () => requestAnimationFrame(draw)});
+function draw() {
+    hdr.update();
+    outputMaterial.headroom = hdr.targetHeadroom;
+    renderer.getDrawingBufferSize(size);
+    sourceTarget.setSize(size.x, size.y);
+    renderer.setRenderTarget(sourceTarget);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    renderer.render(outputScene, camera);
+    document.querySelector('#status').textContent = `Route: ${hdr.route}; display reports HDR: ${hdr.displaySupportsHdr}; target headroom: ${hdr.targetHeadroom}`;
+}
+document.querySelector('#enabled').onchange = e => { hdr.enabled = e.target.checked; draw(); };
+document.querySelector('#trigger').onchange = e => { hdr.allowCompositorTrigger = e.target.checked; draw(); };
+document.querySelector('#curve').onchange = e => { outputMaterial.toneMapping = e.target.value === 'neutral' ? NeutralToneMapping : ACESFilmicToneMapping; draw(); };
+document.querySelector('#headroom').onchange = e => { hdr.headroom = Math.max(1, Number(e.target.value) || 1); draw(); };
+window.hdrDemo = {renderer, hdr, material, outputMaterial, outputMesh, sourceTarget, draw};
+draw();
+window.ready = true;
+</script>
