@@ -2,8 +2,37 @@ import { ClampToEdgeWrapping, LinearFilter, Texture, WebGLRenderTarget, WebGLRen
 import RenderTargetStore, { RenderTargetStoreOptions } from "./RenderTargetStore.js";
 import Blur1D from "../materials/Blur1D.js";
 import { Rendering } from "./Rendering.js";
+import { gaussianBlur as pyramidGaussianBlurCompat } from "./PyramidGaussianBlur.js";
 
+/**
+ * Gaussian blur with σ = truncationSigma · (N - 1) / 2 pixels, where N is `kernel` (rounded as `Blur1D` does)
+ *
+ * With `ClampToEdgeWrapping` (the default) this uses `pyramidGaussianBlur()`: cost is ~constant with respect to σ and the
+ * result is shift-invariant, so small HDR highlights do not shimmer as they move. The kernel is an untruncated Gaussian;
+ * `truncationSigma` only sets σ. Other wrap modes use `separableGaussianBlur()`, the previous full-resolution
+ * implementation, which truncates the kernel at ±σ / truncationSigma and handles repeat/mirror borders exactly.
+ */
 export function gaussianBlur(
+	renderer: WebGLRenderer,
+	renderTargetStore: RenderTargetStore,
+	texture: Texture,
+	kernel: number,
+	truncationSigma: number = 0.5,
+	wrap: Wrapping = ClampToEdgeWrapping,
+	target: WebGLRenderTarget | null = null,
+	cacheId: string | null = null,
+) {
+	// the pyramid's border handling is exact for clamp-to-edge only
+	if (wrap !== ClampToEdgeWrapping) {
+		return separableGaussianBlur(renderer, renderTargetStore, texture, kernel, truncationSigma, wrap, target, cacheId);
+	}
+	return pyramidGaussianBlurCompat(renderer, renderTargetStore, texture, kernel, truncationSigma, wrap, target, cacheId);
+}
+
+/**
+ * Previous `gaussianBlur()` implementation: two full-resolution `Blur1D` passes. Cost grows linearly with `kernel`
+ */
+export function separableGaussianBlur(
 	renderer: WebGLRenderer,
 	renderTargetStore: RenderTargetStore,
 	texture: Texture,
@@ -32,7 +61,7 @@ export function gaussianBlur(
 	}
 
 	let blurX = Blur1D.get(ctx, kernel, truncationSigma, 1, 0, texture, textureWidth, textureHeight);
-	
+
 	let blurredMaskX = renderTargetStore.getRenderTarget(`${cacheId}_blur2D_x`, textureWidth, textureHeight, textureOptions);
 
 	Rendering.shaderMaterialPass(renderer, {
