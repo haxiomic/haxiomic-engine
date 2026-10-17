@@ -3,15 +3,22 @@ import { ShaderMaterial } from "./ShaderMaterial.js";
 
 /**
  * Blends mipmaps over level 0
- * 
+ *
  * Use with `generateBlurredMipmaps()` to create a blurred mipmap chain
- * 
+ *
  * **Requires minFilter set to `LINEAR_MIPMAP_LINEAR` filtering**
+ *
+ * Or set `bloomSource` to the result of `generatePyramidBloom()` (resolution-independent bloom) or
+ * `generatePyramidBloomLegacy()` (the same bloom as the mip chain): computed without the mip chain's aliasing, so small
+ * bright highlights do not shimmer as they move. Level weights and radii are then set by those functions, and
+ * `mipmapSource`, `bloomFalloff`, `minLod` and `maxLod` are unused.
  */
 export class BloomMipmapsMaterial extends ShaderMaterial<{
     source: Uniform<Texture | null>,
     /** Usually the same as source */
     mipmapSource: Uniform<Texture | null>,
+    /** Precomputed bloom term from `generatePyramidBloom()` or `generatePyramidBloomLegacy()`, replaces the mipmap accumulation when set */
+    bloomSource: Uniform<Texture | null>,
     bloomStrength: Uniform<number>,
     bloomFalloff: Uniform<number>,
     minLod: Uniform<number>,
@@ -44,6 +51,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             uniforms: {
                 source: new Uniform(null),
                 mipmapSource: new Uniform(null),
+                bloomSource: new Uniform(null),
                 bloomStrength: new Uniform(0.01),
                 bloomFalloff: new Uniform(-0.138),
                 minLod: new Uniform(1),
@@ -55,6 +63,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             },
             defines: {
                 BAKE_UNIFORMS: 0,
+                USE_BLOOM_SOURCE: 0,
                 COLOR_GRADING: options.colorGrading ? 1 : 0,
                 // escape newlines
                 BLOOM_ACCUMULATION: dynamicBloomAccumulation,
@@ -70,6 +79,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             fragmentShader: /*glsl*/`
                 uniform sampler2D source;
                 uniform sampler2D mipmapSource;
+                uniform sampler2D bloomSource;
 
                 uniform float bloomStrength;
 
@@ -112,10 +122,14 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                     vec4 lod0 = texture2D(source, vUv);
 
                     vec4 bloom = vec4(0.0);
-                    
+
+                    #if USE_BLOOM_SOURCE
+                    bloom = texture2D(bloomSource, vUv);
+                    #else
                     {
                         BLOOM_ACCUMULATION
                     }
+                    #endif
 
                     gl_FragColor = lod0 + bloom * bloomStrength;
 
@@ -144,6 +158,12 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
         }
 
         this.onBeforeRender = () => {
+            const useBloomSource = this.uniforms.bloomSource.value != null ? 1 : 0;
+            if (this.defines.USE_BLOOM_SOURCE !== useBloomSource) {
+                this.defines.USE_BLOOM_SOURCE = useBloomSource;
+                this.needsUpdate = true;
+            }
+
             // ensure there's always a mipmap source
             if (!this.uniforms.mipmapSource!.value) {
                 this.uniforms.mipmapSource!.value = this.uniforms.source.value;
