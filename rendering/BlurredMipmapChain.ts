@@ -5,6 +5,23 @@ import { Rendering } from "./Rendering.js";
 import RenderTargetStore from "./RenderTargetStore.js";
 import { LinearFilter, LinearMipmapNearestFilter, PixelFormat, WebGLRenderer, WebGLRenderTarget } from "three";
 
+/**
+ * The last mipmap level `generateBlurredMipmaps()` renders for a target of this size.
+ *
+ * The chain halves until either side reaches 1 pixel, so it can stop short of the
+ * `mipmapCount()` levels allocated (which count down the longer side). Levels past
+ * this one are allocated but never written.
+ */
+export function blurredMipmapTopLevel(width: number, height: number) {
+    let level = 0;
+    while (width > 1 && height > 1) {
+        width = Math.floor(width * 0.5);
+        height = Math.floor(height * 0.5);
+        level++;
+    }
+    return level;
+}
+
 export function generateBlurredMipmaps(
     renderer: WebGLRenderer, 
     options: {
@@ -54,7 +71,7 @@ export function generateBlurredMipmaps(
     let height = target.height;
     let sourceMipmapLevel = 0;
 
-    // render blurred mips
+    // render blurred mips; blurredMipmapTopLevel() mirrors this loop
     let i = 1;
     while (width > 1 && height > 1) {
         const blurXShader = Blur1D.get(

@@ -1,4 +1,5 @@
 import { Texture, Uniform } from "three";
+import { blurredMipmapTopLevel } from "../rendering/BlurredMipmapChain.js";
 import { ShaderMaterial } from "./ShaderMaterial.js";
 
 /**
@@ -149,8 +150,15 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 this.uniforms.mipmapSource!.value = this.uniforms.source.value;
             }
 
-            let mipmapCount: number = this.uniforms.mipmapSource!.value?.mipmaps?.length ?? 0;
+            const mipmapSource = this.uniforms.mipmapSource!.value;
+            let mipmapCount: number = mipmapSource?.mipmaps?.length ?? 0;
             let maxLod = Math.max(0, mipmapCount - 1);
+            // The chain is allocated down the longer side but rendered until the
+            // shorter reaches 1 pixel: never sum levels it did not write.
+            const image = mipmapSource?.image as { width?: number, height?: number } | undefined;
+            if (image?.width && image?.height) {
+                maxLod = Math.min(maxLod, blurredMipmapTopLevel(image.width, image.height) + 1);
+            }
             this.uniforms.maxLod!.value = maxLod;
             const minLod = Math.min(this.uniforms.minLod.value, maxLod);
 
