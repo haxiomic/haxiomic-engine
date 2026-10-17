@@ -44,6 +44,19 @@ test.describe('gaussian blur & pyramid bloom', () => {
         expect(await page.evaluate(() => window.bloomShiftVariance('balanced'))).toBeLessThan(0.008)
     })
 
+    test('generateBlurredMipmaps antiAliased removes the shimmer and keeps the look', async ({ page }) => {
+        // the default chain is 83-93% at both. Kernels of 9.3 px (a 0.0173 kernel at 1080p) and 16 px: measured
+        // 1.4% and 0.14%. (Much smaller kernels leave the levels under a texel of blur, which no decimated level can
+        // represent shift-invariantly: 9% at 4 px.)
+        expect(await page.evaluate(() => window.bloomShiftVariance('antiAliased', 0.0727))).toBeLessThan(0.025)
+        expect(await page.evaluate(() => window.bloomShiftVariance('antiAliased', 0.125))).toBeLessThan(0.004)
+        const r = await page.evaluate(() => window.antiAliasedMipsParity())
+        // smooth input, where the default chain does not alias: same blur per level
+        for (const [i, e] of r.errors.entries()) expect(e, `level ${i + 1}`).toBeLessThan(0.03)
+        expect(r.legacyDeterministic).toBe(true)
+        expect(r.swizzleError).toBeLessThan(1e-3)
+    })
+
     test('generatePyramidBloom is resolution independent', async ({ page }) => {
         expect(await page.evaluate(() => window.bloomResolutionIndependence())).toBeLessThan(0.01)
     })

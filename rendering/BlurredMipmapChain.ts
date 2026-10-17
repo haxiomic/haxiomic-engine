@@ -1,6 +1,7 @@
 import Blur1D from "../materials/Blur1D.js";
 import { RGBASwizzle, Swizzle } from "../materials/Swizzle.js";
 import { mipmapCount } from "../math/Math.js";
+import { generateAntiAliasedMipmaps } from "./AntiAliasedMipmapChain.js";
 import { Rendering } from "./Rendering.js";
 import RenderTargetStore from "./RenderTargetStore.js";
 import { LinearFilter, LinearMipmapNearestFilter, PixelFormat, WebGLRenderer, WebGLRenderTarget } from "three";
@@ -14,8 +15,23 @@ export function generateBlurredMipmaps(
         truncationSigma?: number,
         restoreGlobalState?: boolean,
         swizzle?: Swizzle,
+        /**
+         * Build the levels without aliasing, so small bright details don't shimmer as they move (the default chain's
+         * levels change by up to ~80% of their peak when content moves by a pixel). Same levels, sizes and blur
+         * amount, so the look is kept. For bloom, pair it with `BloomMipmapsMaterial`'s `smoothLevels: 2`; bloom
+         * shift-variance is then ~0.1% with kernels of 16+ px (`blurKernel_heightFraction · height / 2`), ~1.4% at
+         * 9 px, and ~9% at 4 px, where the levels hold under a texel of blur. Costs more at high resolution with
+         * small kernels; see `generateAntiAliasedMipmaps()`.
+         * @default false
+         */
+        antiAliased?: boolean,
     }
 ) {
+    if (options.antiAliased) {
+        generateAntiAliasedMipmaps(renderer, options);
+        return;
+    }
+
     const target = options.target;
     const swizzle = options.swizzle;
     const blurKernel_heightFraction = options.blurKernel_heightFraction ?? 1/16;
