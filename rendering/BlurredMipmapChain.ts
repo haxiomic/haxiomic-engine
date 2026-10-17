@@ -137,8 +137,9 @@ export function generateBlurredMipmaps(
  * level above:
  * - from a level that is already smooth: binomial [1,3,3,1] downsample (alias-free on smooth content), then an exact
  *   Gaussian for the remaining variance at the new level
- * - level 1 (from the unblurred image), when the remaining blur would be under `minCoreSigma` texels: blur at full
- *   resolution and decimate in the same separable pass, which needs no prefilter because the Gaussian is one
+ * - level 1 (from the unblurred image), when the remaining blur would be under `minCoreSigma` texels, and levels built
+ *   from a level under 64 texels: blur at the finer level and decimate in the same separable pass, with exact weights
+ *   per output texel (no prefilter needed: the Gaussian is one)
  *
  * Edges are clamped per level, as in the original chain.
  */
@@ -208,6 +209,13 @@ function blurredMipmapVariances(height: number, levels: number, blurKernel_heigh
 const BINOMIAL_VARIANCE = 0.75;
 /** a level at least this smooth (σ in its own texels) downsamples without aliasing */
 const SMOOTH_SIGMA = 0.8;
+/**
+ * Levels built from a level smaller than this (texels, either side) blur and decimate with exact per-texel weights. The
+ * binomial downsample maps texel centres by normalized coordinates, which weights the texels of small odd sizes
+ * unevenly (3 → 1 takes 0.375, 0.25, 0.375), and on captured frames left the coarsest levels up to 4% darker than the
+ * original chain. These levels are tiny, so the exact path costs nothing measurable.
+ */
+const SMALL_LEVEL_SIZE = 64;
 
 function generateAntiAliasedMipmaps(renderer: WebGLRenderer, options: AntiAliasedMipmapsOptions) {
 	const { target } = options;
@@ -245,7 +253,8 @@ function generateAntiAliasedMipmaps(renderer: WebGLRenderer, options: AntiAliase
 		const previousSigma = Math.sqrt(variances[i - 1]) / (scale / 2); // in level i-1 texels
 		// remaining variance after a binomial downsample, in level i texels²
 		const coreVariance = (variances[i] - variances[i - 1] - BINOMIAL_VARIANCE * Math.pow(4, i - 1)) / Math.pow(4, i);
-		const downsampleThenBlur = coreVariance > 0 && (i > 1 ? previousSigma >= SMOOTH_SIGMA : Math.sqrt(coreVariance) >= minCoreSigma);
+		const small = Math.min(fineWidth, fineHeight) < SMALL_LEVEL_SIZE;
+		const downsampleThenBlur = !small && coreVariance > 0 && (i > 1 ? previousSigma >= SMOOTH_SIGMA : Math.sqrt(coreVariance) >= minCoreSigma);
 
 		if (downsampleThenBlur) {
 			// binomial downsample of level i-1 → temp, exact Gaussian x → temp2, y → level i
