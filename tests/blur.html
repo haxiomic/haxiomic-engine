@@ -122,6 +122,8 @@ window.blurShiftVariance = () => {
 window.bloomShiftVariance = (method = 'pyramid') => {
     const options = { blurKernel_heightFraction: 1 / 32 }
     if (method === 'pyramid') return shiftVariance(t => generatePyramidBloom(renderer, { source: t, radius: 0.004, levels: 5 }), 256, 100, positions)
+    // a finest level of σ ≈ 4 px, which 'balanced' runs at half resolution
+    if (method === 'balanced') return shiftVariance(t => generatePyramidBloom(renderer, { source: t, radius: 0.016, levels: 4, quality: 'balanced' }), 256, 100, positions)
     if (method === 'shim') return shiftVariance(t => generatePyramidBloomLegacy(renderer, { source: t, maxLod: 6, ...options }), 256, 100, positions)
     const mipTarget = new WebGLRenderTarget(256, 256, { type: FloatType, minFilter: LinearMipmapLinearFilter, magFilter: LinearFilter, depthBuffer: false })
     initMipmapArray(mipTarget)
