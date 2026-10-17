@@ -40,10 +40,10 @@ test.describe('gaussian blur & pyramid bloom', () => {
         })
     })
 
-    test('generatePyramidBloom and its legacy shim are shift-invariant', async ({ page }) => {
+    test('pyramid bloom is shift-invariant', async ({ page }) => {
         // the mipmap chain bloom is ~85% here
         expect(await page.evaluate(() => window.bloomShiftVariance('pyramid'))).toBeLessThan(0.003)
-        expect(await page.evaluate(() => window.bloomShiftVariance('shim'))).toBeLessThan(0.003)
+        expect(await page.evaluate(() => window.bloomShiftVariance('mipTerms'))).toBeLessThan(0.003)
         // cheaper preset: documented as ≈ 0.4% of peak
         expect(await page.evaluate(() => window.bloomShiftVariance('balanced'))).toBeLessThan(0.008)
     })
@@ -65,7 +65,7 @@ test.describe('gaussian blur & pyramid bloom', () => {
         expect(await page.evaluate(() => window.bloomResolutionIndependence())).toBeLessThan(0.01)
     })
 
-    test('generatePyramidBloomLegacy looks the same as the mipmap chain bloom', async ({ page }) => {
+    test('pyramidBloom with the mip bloom terms looks the same as the mipmap chain bloom', async ({ page }) => {
         // smooth input, where the mipmap chain does not alias: same σ per level and same weights
         expect(await page.evaluate(() => window.bloomParity())).toBeLessThan(0.03)
     })

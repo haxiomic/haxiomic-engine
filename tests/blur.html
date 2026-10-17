@@ -10,7 +10,9 @@ import { DataTexture, FloatType, LinearFilter, LinearMipmapLinearFilter, Mirrore
 import RenderTargetStore, { initMipmapArray } from '/dist/rendering/RenderTargetStore.js'
 import { gaussianBlur, separableGaussianBlur } from '/dist/rendering/GaussianBlur.js'
 import { sigmaFromKernel } from '/dist/rendering/PyramidGaussianBlur.js'
-import { generatePyramidBloom, generatePyramidBloomLegacy } from '/dist/rendering/PyramidBloom.js'
+import { generatePyramidBloom, pyramidBloom } from '/dist/rendering/PyramidBloom.js'
+import Blur1D from '/dist/materials/Blur1D.js'
+import { mipmapCount } from '/dist/math/Math.js'
 import { generateBlurredMipmaps } from '/dist/rendering/BlurredMipmapChain.js'
 import { BloomMipmapsMaterial } from '/dist/materials/BloomMipmapsMaterial.js'
 import { CopyMaterial } from '/dist/materials/CopyMaterial.js'
@@ -143,7 +145,7 @@ window.blurShiftVariance = () => {
 }
 
 /**
- * 'pyramid': generatePyramidBloom, 'shim': generatePyramidBloomLegacy, 'mipmaps': the mipmap chain bloom
+ * 'pyramid': generatePyramidBloom, 'mipTerms': pyramidBloom with the mip bloom's terms, 'mipmaps': the mipmap chain bloom
  * (generateBlurredMipmaps + BloomMipmapsMaterial), for comparison, 'antiAliased': the mipmap chain bloom with
  * `antiAliased: true` and `smoothLevels: 2`. `blurKernel_heightFraction` sets the mip chain's kernel
  */
@@ -153,7 +155,7 @@ window.bloomShiftVariance = (method = 'pyramid', blurKernel_heightFraction = 1 /
     if (method === 'pyramid') return shiftVariance(t => generatePyramidBloom(renderer, { source: t, radius: 0.004, levels: 5 }), 256, 100, positions)
     // a finest level of σ ≈ 4 px, which 'balanced' runs at half resolution
     if (method === 'balanced') return shiftVariance(t => generatePyramidBloom(renderer, { source: t, radius: 0.016, levels: 4, quality: 'balanced' }), 256, 100, positions)
-    if (method === 'shim') return shiftVariance(t => generatePyramidBloomLegacy(renderer, { source: t, maxLod: 6, ...options }), 256, 100, positions)
+    if (method === 'mipTerms') return shiftVariance(t => pyramidBloom(renderer, new RenderTargetStore(), t, mipBloomTerms(256, 256, { ...options, maxLod: 6 })), 256, 100, positions)
     const mipTarget = new WebGLRenderTarget(256, 256, { type: FloatType, minFilter: LinearMipmapLinearFilter, magFilter: LinearFilter, depthBuffer: false })
     initMipmapArray(mipTarget)
     const out = new WebGLRenderTarget(256, 256, { type: FloatType })
@@ -172,6 +174,33 @@ window.bloomShiftVariance = (method = 'pyramid', blurKernel_heightFraction = 1 /
     }, 256, 100, positions)
 }
 const blackTexture = floatTexture(new Float32Array(4), 1, 1)
+
+/**
+ * Reference: the Gaussian terms of the mip bloom (generateBlurredMipmaps + BloomMipmapsMaterial) — each level's blur
+ * variance as built by the chain (2σ-truncated Blur1D passes, decimation) plus bilinear magnification, weighted
+ * i^-bloomFalloff
+ */
+function mipBloomTerms(width, height, { blurKernel_heightFraction = 1 / 16, truncationSigma: t = 0.5, bloomFalloff = -0.138, minLod = 1, maxLod } = {}) {
+    maxLod ??= mipmapCount(width, height) - 1
+    const kernelPixels = blurKernel_heightFraction * height * 0.5
+    const erf = (x) => {
+        const s = Math.sign(x); x = Math.abs(x)
+        const k = 1 / (1 + 0.3275911 * x)
+        return s * (1 - (((((1.061405429 * k - 1.453152027) * k) + 1.421413741) * k - 0.284496736) * k + 0.254829592) * k * Math.exp(-x * x))
+    }
+    // Blur1D truncates at ±σ/t: variance of a truncated normal
+    const b = 1 / t
+    const truncated = 1 - (2 * b * Math.exp(-b * b / 2) / Math.sqrt(2 * Math.PI)) / erf(b / Math.SQRT2)
+    const sigmaTexels = (kernel) => t * (Blur1D.nearestBestKernel(kernel) - 1) / 2
+    const sx = sigmaTexels(kernelPixels), sy = sigmaTexels(kernelPixels * 0.5)
+    const terms = []
+    let variance = 0
+    for (let i = 1; i < maxLod; i++) {
+        variance += truncated * (sx * sx * 4 ** (i - 1) + sy * sy * 4 ** i) / 2 + 0.5 * 4 ** (i - 1)
+        if (i >= minLod) terms.push({ sigma: Math.sqrt(variance + 4 ** i / 6), weight: i ** -bloomFalloff })
+    }
+    return terms
+}
 
 /**
  * generateBlurredMipmaps with and without antiAliased on a smooth input (where the default chain does not alias):
@@ -274,7 +303,7 @@ window.bloomParity = () => {
     legacy.uniforms.bloomStrength.value = 1
     const pyramid = new BloomMipmapsMaterial()
     pyramid.uniforms.source.value = mipTarget.texture
-    pyramid.uniforms.bloomSource.value = generatePyramidBloomLegacy(renderer, { source: mipTarget, ...options }).texture
+    pyramid.uniforms.bloomSource.value = pyramidBloom(renderer, new RenderTargetStore(), mipTarget.texture, mipBloomTerms(size, size, options), { border: 'clampPerLevel' }).texture
     pyramid.uniforms.bloomStrength.value = 1
 
     const a = composite(legacy), b = composite(pyramid)
