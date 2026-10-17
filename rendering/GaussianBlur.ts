@@ -2,15 +2,12 @@ import { ClampToEdgeWrapping, LinearFilter, Texture, WebGLRenderTarget, WebGLRen
 import RenderTargetStore, { RenderTargetStoreOptions } from "./RenderTargetStore.js";
 import Blur1D from "../materials/Blur1D.js";
 import { Rendering } from "./Rendering.js";
-import { gaussianBlur as pyramidGaussianBlurCompat } from "./PyramidGaussianBlur.js";
+import { pyramidGaussianBlur, sigmaFromKernel } from "./PyramidGaussianBlur.js";
 
 /**
- * Gaussian blur with σ = truncationSigma · (N - 1) / 2 pixels, where N is `kernel` (rounded as `Blur1D` does)
- *
- * With `ClampToEdgeWrapping` (the default) this uses `pyramidGaussianBlur()`: cost is ~constant with respect to σ and the
- * result is shift-invariant, so small HDR highlights do not shimmer as they move. The kernel is an untruncated Gaussian;
- * `truncationSigma` only sets σ. Other wrap modes use `separableGaussianBlur()`, the previous full-resolution
- * implementation, which truncates the kernel at ±σ / truncationSigma and handles repeat/mirror borders exactly.
+ * Gaussian blur with σ = truncationSigma · (N − 1) / 2 pixels (N = `kernel`, rounded as Blur1D does), via
+ * `pyramidGaussianBlur()`: cost roughly constant in σ, and shift-invariant. The kernel is untruncated, so
+ * `truncationSigma` only sets σ. For a σ in pixels or a fraction of the image, call `pyramidGaussianBlur()` directly.
  */
 export function gaussianBlur(
 	renderer: WebGLRenderer,
@@ -22,15 +19,16 @@ export function gaussianBlur(
 	target: WebGLRenderTarget | null = null,
 	cacheId: string | null = null,
 ) {
-	// the pyramid's border handling is exact for clamp-to-edge only
-	if (wrap !== ClampToEdgeWrapping) {
-		return separableGaussianBlur(renderer, renderTargetStore, texture, kernel, truncationSigma, wrap, target, cacheId);
-	}
-	return pyramidGaussianBlurCompat(renderer, renderTargetStore, texture, kernel, truncationSigma, wrap, target, cacheId);
+	return pyramidGaussianBlur(renderer, renderTargetStore, texture, sigmaFromKernel(kernel, truncationSigma), {
+		wrap,
+		target,
+		cacheId: cacheId ?? `${texture.uuid}_${truncationSigma}`,
+	});
 }
 
 /**
- * Previous `gaussianBlur()` implementation: two full-resolution `Blur1D` passes. Cost grows linearly with `kernel`
+ * The previous `gaussianBlur()`: two full-resolution Blur1D passes with the kernel truncated at ±σ / truncationSigma.
+ * Cost grows linearly with `kernel`. For callers that rely on the truncated kernel's look
  */
 export function separableGaussianBlur(
 	renderer: WebGLRenderer,

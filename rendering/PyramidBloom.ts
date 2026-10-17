@@ -4,51 +4,39 @@ import Blur1D from "../materials/Blur1D.js";
 import { Rendering } from "./Rendering.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 import { mipmapCount } from "../math/Math.js";
-import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, PyramidBorder, borderGLSL, bsplineGLSL, defaultCoreLinearSampling, downsampleVariance, fullscreenVertexShader, getTextureSize, snapshotRendererState } from "./PyramidGaussianBlur.js";
+import { PyramidBorder } from "./PyramidGaussianBlur.js";
+import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, borderGLSL, bsplineGLSL, defaultCoreLinearSampling, downsampleVariance, fullscreenVertexShader, getTextureSize, snapshotRendererState } from "./PyramidInternals.js";
 
-/**
- * Multi-scale bloom: Σ weightᵢ · Gaussian(σᵢ) of the source, evaluated with one shared anti-aliased pyramid.
- *
- * Each term gets an exact core Gaussian at the coarsest level that keeps its core σ ≥ `minCoreSigma`, then terms are
- * accumulated coarse-to-fine through a cascade of 2x cubic B-spline upsamples. The variance added by downsampling and
- * by every upsample a term passes through is subtracted from its core σ, so each term is a Gaussian of exactly σᵢ.
- *
- * Shift-invariant like `pyramidGaussianBlur()`: small HDR highlights do not shimmer as they move.
- */
+/** One Gaussian of a bloom: σ in pixels, and its weight in the sum */
 export type BloomTerm = { sigma: number, weight: number };
 
 export type PyramidBloomOptions = {
 	/**
-	 * Smallest core σ in texels of its pyramid level, as `PyramidGaussianBlurOptions.minCoreSigma`, optionally per term
-	 * (index in σ order). Terms below 2·minCoreSigma pixels run at full resolution, which is exact but the most expensive
-	 * part of the bloom; a smaller value for the finest term moves it to half resolution.
-	 * @default 3
-	 */
-	minCoreSigma?: MinCoreSigma,
-	/** Gaussian truncation of the core kernels, in σ @default 5 */
-	coreTruncation?: number,
-	/**
-	 * Presets for `minCoreSigma` & `coreTruncation` (explicit values override):
-	 * - 'high': minCoreSigma 3, 5σ. Shift variance ≈ 0.01% of peak
-	 * - 'balanced': minCoreSigma 2 (1.5 for the finest term), 4σ. Shift variance ≈ 0.4% of peak (≈ 0.2 8-bit levels of
-	 *   flicker on a strong bloom, still invisible) at roughly a third of the cost when the finest term would otherwise
-	 *   run at full resolution: about the cost of the mip chain bloom at 4K
+	 * - 'high': ≈ 0.01% shift variance (no visible flicker even on strong HDR bloom)
+	 * - 'balanced': ≈ 0.4% (≈ 0.2 8-bit levels on a strong bloom, invisible) at about a third of the cost when the
+	 *   finest term is under ~6 px; then about the cost of the mip chain bloom
 	 * @default 'high'
 	 */
 	quality?: BloomQuality,
-	/** Restore the renderer's render target & viewport afterwards. @default true */
-	restoreGlobalState?: boolean,
 	/**
-	 * Border handling, see `PyramidBorder`. The default 'clampPerLevel' repeats each level's edge texel like the mip chain
-	 * bloom, so wide terms repeat a σ-scale band of edge content; it is the closest match to the mip chain bloom.
-	 * 'clampToEdge' repeats only the outer pixel row (darker corners on dark-edged frames); 'normalize' repeats nothing and
-	 * converges to the in-frame mean (brighter corners there).
+	 * See `PyramidBorder`. 'clampPerLevel' (the default) is closest to the mip chain bloom; 'clampToEdge' darkens corners
+	 * of dark-edged frames slightly; 'normalize' brightens them slightly.
 	 * @default 'clampPerLevel'
 	 */
 	border?: PyramidBorder,
-	wrap?: Wrapping,
+	/** Render into this target instead of a cached one */
 	target?: WebGLRenderTarget | null,
+	/** Key for the cached intermediate and result targets @default texture.uuid */
 	cacheId?: string | null,
+	/** Restore the renderer's render target & viewport afterwards @default true */
+	restoreGlobalState?: boolean,
+	/**
+	 * Advanced, overrides `quality`. Smallest core σ in texels of its level, optionally per term (index in σ order);
+	 * lower is cheaper but less shift-invariant. Terms under 2·minCoreSigma px run at full resolution. @default 3
+	 */
+	minCoreSigma?: MinCoreSigma,
+	/** Advanced, overrides `quality`. Truncation of the core Gaussians, in σ @default 5 */
+	coreTruncation?: number,
 }
 
 /** Variance (in level-k texels²) added by k binomial downsamples and k cascaded 2x B-spline upsamples */
@@ -64,7 +52,7 @@ function cascadeVariance(k: number) {
 /** Maximum number of terms evaluated at the same pyramid level */
 const MAX_TERMS_PER_LEVEL = 4;
 
-export type MinCoreSigma = number | ((term: BloomTerm, index: number) => number);
+type MinCoreSigma = number | ((term: BloomTerm, index: number) => number);
 export type BloomQuality = 'high' | 'balanced';
 
 const qualityPresets: Record<BloomQuality, { minCoreSigma: MinCoreSigma, coreTruncation: number }> = {
@@ -73,7 +61,7 @@ const qualityPresets: Record<BloomQuality, { minCoreSigma: MinCoreSigma, coreTru
 	balanced: { minCoreSigma: (_term, index) => index === 0 ? 1.5 : 2, coreTruncation: 4 },
 };
 
-export function planPyramidBloom(terms: BloomTerm[], minCoreSigmaOption: MinCoreSigma = 3) {
+function planPyramidBloom(terms: BloomTerm[], minCoreSigmaOption: MinCoreSigma = 3) {
 	const planned: { level: number, coreSigma: number, weight: number, sigma: number }[] = [];
 	const ordered = terms.slice().sort((a, b) => a.sigma - b.sigma);
 	for (const term of terms) {
@@ -90,6 +78,11 @@ export function planPyramidBloom(terms: BloomTerm[], minCoreSigmaOption: MinCore
 	return planned;
 }
 
+/**
+ * Σ weight · Gaussian(σ) of the source over any set of terms, sharing one anti-aliased pyramid: each term costs one small
+ * exact blur at its own level, so even 10+ terms cost about as much as one `pyramidGaussianBlur()`. Shift-invariant.
+ * Use for custom weightings (glows, light scattering); for bloom, `generatePyramidBloom()` picks the terms.
+ */
 export function pyramidBloom(
 	renderer: WebGLRenderer,
 	renderTargetStore: RenderTargetStore,
@@ -97,7 +90,7 @@ export function pyramidBloom(
 	terms: BloomTerm[],
 	options: PyramidBloomOptions = {},
 ) {
-	const wrap = options.wrap ?? ClampToEdgeWrapping;
+	const wrap = ClampToEdgeWrapping;
 	const cacheId = options.cacheId ?? `${texture.uuid}_pyramidBloom`;
 	const border = options.border ?? 'clampPerLevel';
 	const padding = wrap === ClampToEdgeWrapping && border !== 'clampPerLevel' ? LEVEL_PADDING : 0;
@@ -127,7 +120,7 @@ export function pyramidBloom(
 		const width = unpaddedWidth + 2 * padding, height = unpaddedHeight + 2 * padding;
 		const levelTarget = renderTargetStore.getRenderTarget(`${cacheId}_bloom_down_${j}`, width, height, textureOptions);
 		const input = levels[j - 1];
-		const shader = DownsampleMaterial.get('binomial4', normalize && j === 1);
+		const shader = DownsampleMaterial.get('binomial4', { zeroOutside: normalize && j === 1 });
 		shader.uniforms.source.value = input.texture;
 		shader.uniforms.sourceInvSize.value.set(1 / input.width, 1 / input.height);
 		shader.uniforms.sourceSize.value.set(input.width, input.height);
@@ -222,16 +215,17 @@ type BloomOutputOptions = {
  * Defaults for `generatePyramidBloom()`: the engine's mip bloom (default options) as it looks at 1920×1080. Its levels
  * 2-9 match to within ~1%; its level 1 is ~13% narrower than a strict doubling.
  */
-export const DEFAULT_BLOOM_RADIUS = 0.0073;
-export const DEFAULT_BLOOM_LEVELS = 9;
+const DEFAULT_BLOOM_RADIUS = 0.0073;
+const DEFAULT_BLOOM_LEVELS = 9;
 
 /**
- * Multi-scale bloom term Σ levelᵢ · i^-bloomFalloff, where level i (1-based) is a Gaussian blur with σ = radius · 2^(i-1)
- * image heights. Resolution independent: the same at any resolution, aspect ratio or DPR.
+ * Bloom: Σ levelᵢ · i^-bloomFalloff, where level i is a Gaussian with σ = radius · 2^(i−1) image heights. The same at
+ * any resolution, aspect ratio or DPR, and shift-invariant, so small HDR highlights don't flicker as they move. Pass the
+ * result to `BloomMipmapsMaterial` as `bloomSource`.
  *
- * Pass the result to `BloomMipmapsMaterial` as `bloomSource`. The defaults approximate the material's mip bloom (with
- * `generateBlurredMipmaps()` default options) as it looks at 1920×1080. To keep an existing mip bloom setup's options
- * see `generatePyramidBloomLegacy()`.
+ * Cost (RTX 5070): with `quality: 'balanced'` about that of the mip chain bloom (+0.1 ms per frame at 4K in apps);
+ * 'high' adds ~1 ms at 4K when the finest level is only a few pixels. The defaults look like the mip bloom with
+ * default options at 1080p.
  */
 export function generatePyramidBloom(
 	renderer: WebGLRenderer,
