@@ -119,7 +119,13 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 
                 void main() {
                     // mix in lods
+                    #if USE_BLOOM_SOURCE
+                    // explicit lod: with bloomSource the source's mip levels are not generated, and a mipmapped
+                    // minFilter could otherwise blend in stale levels
+                    vec4 lod0 = textureLod(source, vUv, 0.0);
+                    #else
                     vec4 lod0 = texture2D(source, vUv);
+                    #endif
 
                     vec4 bloom = vec4(0.0);
 
