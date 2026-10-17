@@ -1,0 +1,241 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Blur fixture</title>
+
+<script type="importmap">
+{ "imports": { "three": "/node_modules/three/build/three.module.js" } }
+</script>
+<script type="module">
+import { DataTexture, FloatType, LinearFilter, LinearMipmapLinearFilter, NoToneMapping, RGBAFormat, RepeatWrapping, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
+import RenderTargetStore, { initMipmapArray } from '/dist/rendering/RenderTargetStore.js'
+import { gaussianBlur, separableGaussianBlur } from '/dist/rendering/GaussianBlur.js'
+import { sigmaFromKernel } from '/dist/rendering/PyramidGaussianBlur.js'
+import { generatePyramidBloom, generatePyramidBloomLegacy } from '/dist/rendering/PyramidBloom.js'
+import { generateBlurredMipmaps } from '/dist/rendering/BlurredMipmapChain.js'
+import { BloomMipmapsMaterial } from '/dist/materials/BloomMipmapsMaterial.js'
+import { CopyMaterial } from '/dist/materials/CopyMaterial.js'
+import { Rendering } from '/dist/rendering/Rendering.js'
+
+const renderer = new WebGLRenderer({ canvas: document.createElement('canvas') })
+renderer.autoClear = false
+const gl = renderer.getContext()
+
+const floatTexture = (data, width, height) => {
+    const t = new DataTexture(data, width, height, RGBAFormat, FloatType)
+    t.minFilter = t.magFilter = LinearFilter
+    t.needsUpdate = true
+    return t
+}
+
+const read = (target) => {
+    const out = new Float32Array(target.width * target.height * 4)
+    renderer.readRenderTargetPixels(target, 0, 0, target.width, target.height, out)
+    return out
+}
+
+/** exact separable Gaussian (float64, sampled kernel to 6σ, clamp-to-edge) of channel 0 */
+function referenceBlur(data, width, height, sigma) {
+    const radius = Math.ceil(6 * sigma)
+    const k = []
+    let total = 0
+    for (let i = -radius; i <= radius; i++) { const w = Math.exp(-i * i / (2 * sigma * sigma)); k.push(w); total += w }
+    const tmp = new Float64Array(width * height), out = new Float64Array(width * height)
+    const clamp = (v, n) => v < 0 ? 0 : v >= n ? n - 1 : v
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        let s = 0
+        for (let i = -radius; i <= radius; i++) s += data[(y * width + clamp(x + i, width)) * 4] * k[i + radius]
+        tmp[y * width + x] = s / total
+    }
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        let s = 0
+        for (let i = -radius; i <= radius; i++) s += tmp[clamp(y + i, height) * width + x] * k[i + radius]
+        out[y * width + x] = s / total
+    }
+    return out
+}
+
+/** HDR test image: gradient, hard-edged checker, bright points */
+function testImage(width, height) {
+    const data = new Float32Array(width * height * 4)
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4
+        data[i] = 0.2 + 0.3 * (x / width) + (((x >> 4) + (y >> 4)) & 1) * 0.4
+        data[i + 3] = 1
+    }
+    let s = 1
+    const rand = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296
+    for (let n = 0; n < 30; n++) data[(Math.floor(rand() * height) * width + Math.floor(rand() * width)) * 4] += 100 + rand() * 900
+    return data
+}
+
+/** `legacy`: measure `separableGaussianBlur` instead, for comparison */
+window.blurAccuracy = (legacy = false) => {
+    const blur = legacy ? separableGaussianBlur : gaussianBlur
+    const width = 257, height = 193
+    const data = testImage(width, height)
+    const texture = floatTexture(data, width, height)
+    const store = new RenderTargetStore()
+    const rows = []
+    for (const kernel of [9, 33, 129]) {
+        const sigma = sigmaFromKernel(kernel, 0.5)
+        const out = read(blur(renderer, store, texture, kernel, 0.5))
+        const ref = referenceBlur(data, width, height, sigma)
+        let peak = 0, err = 0
+        for (let i = 0; i < ref.length; i++) { peak = Math.max(peak, ref[i]); err = Math.max(err, Math.abs(out[i * 4] - ref[i])) }
+        rows.push({ kernel, sigma, error: err / peak })
+    }
+    return rows
+}
+
+/** single bright pixel at many positions: deviation of the aligned responses from their mean, relative to peak */
+function shiftVariance(blur, size, radius, positions) {
+    const responses = []
+    for (const [px, py] of positions) {
+        const data = new Float32Array(size * size * 4)
+        data[(py * size + px) * 4] = 1
+        const out = read(blur(floatTexture(data, size, size)))
+        const r = new Float64Array((2 * radius + 1) ** 2)
+        for (let y = -radius; y <= radius; y++) for (let x = -radius; x <= radius; x++) {
+            r[(y + radius) * (2 * radius + 1) + x + radius] = out[((py + y) * size + px + x) * 4]
+        }
+        responses.push(r)
+    }
+    const mean = responses[0].map((_, i) => responses.reduce((s, r) => s + r[i], 0) / responses.length)
+    const peak = Math.max(...mean)
+    let dev = 0
+    for (const r of responses) for (let i = 0; i < r.length; i++) dev = Math.max(dev, Math.abs(r[i] - mean[i]))
+    return dev / peak
+}
+
+const positions = Array.from({ length: 16 }, (_, i) => [120 + i, 120 + ((i * 5) % 16)])
+
+window.blurShiftVariance = () => {
+    const store = new RenderTargetStore()
+    // σ = 24 px: a 3-level pyramid
+    return shiftVariance(t => gaussianBlur(renderer, store, t, 97, 0.5), 256, 100, positions)
+}
+
+/**
+ * 'pyramid': generatePyramidBloom, 'shim': generatePyramidBloomLegacy, 'mipmaps': the mipmap chain bloom
+ * (generateBlurredMipmaps + BloomMipmapsMaterial), for comparison
+ */
+window.bloomShiftVariance = (method = 'pyramid') => {
+    const options = { blurKernel_heightFraction: 1 / 32 }
+    if (method === 'pyramid') return shiftVariance(t => generatePyramidBloom(renderer, { source: t, radius: 0.004, levels: 5 }), 256, 100, positions)
+    if (method === 'shim') return shiftVariance(t => generatePyramidBloomLegacy(renderer, { source: t, maxLod: 6, ...options }), 256, 100, positions)
+    const mipTarget = new WebGLRenderTarget(256, 256, { type: FloatType, minFilter: LinearMipmapLinearFilter, magFilter: LinearFilter, depthBuffer: false })
+    initMipmapArray(mipTarget)
+    const out = new WebGLRenderTarget(256, 256, { type: FloatType })
+    const copy = new CopyMaterial()
+    const material = new BloomMipmapsMaterial()
+    material.uniforms.bloomStrength.value = 1
+    return shiftVariance(t => {
+        copy.uniforms.source.value = t
+        Rendering.shaderMaterialPass(renderer, { target: mipTarget, shader: copy, restoreGlobalState: true })
+        generateBlurredMipmaps(renderer, { target: mipTarget, ...options })
+        // bloom term only: composite with a black base
+        material.uniforms.source.value = blackTexture
+        material.uniforms.mipmapSource.value = mipTarget.texture
+        Rendering.shaderMaterialPass(renderer, { target: out, shader: material, restoreGlobalState: true, toneMapping: NoToneMapping })
+        return out
+    }, 256, 100, positions)
+}
+const blackTexture = floatTexture(new Float32Array(4), 1, 1)
+
+window.blurContract = () => {
+    const width = 123, height = 77
+    const texture = floatTexture(testImage(width, height), width, height)
+    const store = new RenderTargetStore()
+    const sentinel = new WebGLRenderTarget(16, 16)
+    renderer.setRenderTarget(sentinel)
+    renderer.setViewport(1, 2, 10, 12)
+    const result = gaussianBlur(renderer, store, texture, 33, 0.5)
+    const restored = renderer.getRenderTarget() === sentinel && renderer.getViewport(new Vector4()).equals(new Vector4(1, 2, 10, 12))
+    const userTarget = new WebGLRenderTarget(width, height, { type: FloatType })
+    const legacy = separableGaussianBlur(renderer, store, texture, 33, 0.5)
+    // non-clamp wrapping keeps the previous exact separable path
+    const repeat = read(gaussianBlur(renderer, store, texture, 33, 0.5, RepeatWrapping, null, 'repeat'))
+    const repeatLegacy = read(separableGaussianBlur(renderer, store, texture, 33, 0.5, RepeatWrapping, null, 'repeatLegacy'))
+    return {
+        repeatWrapUsesSeparable: repeat.every((v, i) => v === repeatLegacy[i]),
+        restored,
+        sameSizeAsInput: result.width === width && result.height === height,
+        sameTypeAsLegacy: result.texture.type === legacy.texture.type,
+        returnsTarget: gaussianBlur(renderer, store, texture, 33, 0.5, undefined, userTarget) === userTarget,
+        cacheIdsSeparate: gaussianBlur(renderer, store, texture, 33, 0.5, undefined, null, 'a') !== gaussianBlur(renderer, store, texture, 33, 0.5, undefined, null, 'b'),
+    }
+}
+
+/**
+ * BloomMipmapsMaterial with bloomSource from generatePyramidBloom vs the mipmap chain, on a smooth input where the
+ * mip chain's aliasing is negligible: the two should look the same
+ */
+window.bloomParity = () => {
+    const size = 256
+    const data = new Float32Array(size * size * 4)
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        const d2 = ((x - 128) ** 2 + (y - 120) ** 2) / (2 * 18 * 18)
+        data[(y * size + x) * 4] = 4 * Math.exp(-d2)
+        data[(y * size + x) * 4 + 3] = 1
+    }
+    const input = floatTexture(data, size, size)
+    const options = { blurKernel_heightFraction: 1 / 16, truncationSigma: 0.5 }
+
+    const mipTarget = new WebGLRenderTarget(size, size, { type: FloatType, minFilter: LinearMipmapLinearFilter, magFilter: LinearFilter, depthBuffer: false })
+    // mip storage must exist before the first render (as the engine's pipelines do)
+    initMipmapArray(mipTarget)
+    const copy = new CopyMaterial()
+    copy.uniforms.source.value = input
+    Rendering.shaderMaterialPass(renderer, { target: mipTarget, shader: copy, restoreGlobalState: true })
+    generateBlurredMipmaps(renderer, { target: mipTarget, ...options })
+
+    const composite = (material) => {
+        const out = new WebGLRenderTarget(size, size, { type: FloatType })
+        Rendering.shaderMaterialPass(renderer, { target: out, shader: material, restoreGlobalState: true, toneMapping: NoToneMapping })
+        return read(out)
+    }
+    const legacy = new BloomMipmapsMaterial()
+    legacy.uniforms.source.value = mipTarget.texture
+    legacy.uniforms.bloomStrength.value = 1
+    const pyramid = new BloomMipmapsMaterial()
+    pyramid.uniforms.source.value = mipTarget.texture
+    pyramid.uniforms.bloomSource.value = generatePyramidBloomLegacy(renderer, { source: mipTarget, ...options }).texture
+    pyramid.uniforms.bloomStrength.value = 1
+
+    const a = composite(legacy), b = composite(pyramid)
+    let peak = 0, diff = 0
+    for (let i = 0; i < a.length; i += 4) { peak = Math.max(peak, a[i]); diff = Math.max(diff, Math.abs(a[i] - b[i])) }
+    return diff / peak
+}
+
+/**
+ * generatePyramidBloom of the same continuous image at 192 and 384 px high: compare at matching positions (each low
+ * resolution pixel centre lies between 2×2 high resolution pixel centres), relative to peak
+ */
+window.bloomResolutionIndependence = () => {
+    const render = (height) => {
+        const width = Math.round(height * 1.5)
+        const data = new Float32Array(width * height * 4)
+        for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+            // smooth so both resolutions sample the same continuous image
+            const u = (x + 0.5) / height, v = (y + 0.5) / height
+            const d2 = ((u - 0.6) ** 2 + (v - 0.45) ** 2) / (2 * 0.03 ** 2)
+            data[(y * width + x) * 4] = 50 * Math.exp(-d2)
+        }
+        const out = read(generatePyramidBloom(renderer, { source: floatTexture(data, width, height) }))
+        return { width, height, out }
+    }
+    const lo = render(192), hi = render(384)
+    let peak = 0, diff = 0
+    for (let y = 0; y < lo.height; y++) for (let x = 0; x < lo.width; x++) {
+        const h = (xx, yy) => hi.out[(yy * hi.width + xx) * 4]
+        const v = (h(2 * x, 2 * y) + h(2 * x + 1, 2 * y) + h(2 * x, 2 * y + 1) + h(2 * x + 1, 2 * y + 1)) / 4
+        const l = lo.out[(y * lo.width + x) * 4]
+        peak = Math.max(peak, l)
+        diff = Math.max(diff, Math.abs(v - l))
+    }
+    return diff / peak
+}
+
+window.ready = gl.getExtension('EXT_color_buffer_float') != null && gl.getExtension('OES_texture_float_linear') != null ? true : 'unsupported'
+</script>
