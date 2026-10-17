@@ -2,8 +2,35 @@ import { ClampToEdgeWrapping, LinearFilter, Texture, WebGLRenderTarget, WebGLRen
 import RenderTargetStore, { RenderTargetStoreOptions } from "./RenderTargetStore.js";
 import Blur1D from "../materials/Blur1D.js";
 import { Rendering } from "./Rendering.js";
+import { pyramidGaussianBlur, sigmaFromKernel } from "./PyramidGaussianBlur.js";
 
+/**
+ * Gaussian blur with σ = truncationSigma · (N − 1) / 2 pixels (N = `kernel`, rounded as Blur1D does), via
+ * `pyramidGaussianBlur()`: cost roughly constant in σ, and shift-invariant. The kernel is untruncated, so
+ * `truncationSigma` only sets σ. For a σ in pixels or a fraction of the image, call `pyramidGaussianBlur()` directly.
+ */
 export function gaussianBlur(
+	renderer: WebGLRenderer,
+	renderTargetStore: RenderTargetStore,
+	texture: Texture,
+	kernel: number,
+	truncationSigma: number = 0.5,
+	wrap: Wrapping = ClampToEdgeWrapping,
+	target: WebGLRenderTarget | null = null,
+	cacheId: string | null = null,
+) {
+	return pyramidGaussianBlur(renderer, renderTargetStore, texture, sigmaFromKernel(kernel, truncationSigma), {
+		wrap,
+		target,
+		cacheId: cacheId ?? `${texture.uuid}_${truncationSigma}`,
+	});
+}
+
+/**
+ * The previous `gaussianBlur()`: two full-resolution Blur1D passes with the kernel truncated at ±σ / truncationSigma.
+ * Cost grows linearly with `kernel`. For callers that rely on the truncated kernel's look
+ */
+export function separableGaussianBlur(
 	renderer: WebGLRenderer,
 	renderTargetStore: RenderTargetStore,
 	texture: Texture,
@@ -32,7 +59,7 @@ export function gaussianBlur(
 	}
 
 	let blurX = Blur1D.get(ctx, kernel, truncationSigma, 1, 0, texture, textureWidth, textureHeight);
-	
+
 	let blurredMaskX = renderTargetStore.getRenderTarget(`${cacheId}_blur2D_x`, textureWidth, textureHeight, textureOptions);
 
 	Rendering.shaderMaterialPass(renderer, {
