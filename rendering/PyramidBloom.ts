@@ -39,10 +39,11 @@ export type PyramidBloomOptions = {
 	/** Restore the renderer's render target & viewport afterwards. @default true */
 	restoreGlobalState?: boolean,
 	/**
-	 * Border handling, see `PyramidBorder`. 'coarse' clamps each level at its own resolution like the mip chain, so wide
-	 * terms extend a band of edge content rather than the edge pixels; it is the closest match to the mip chain bloom on
-	 * dark-edged scenes. 'clamp' darkens corners there and 'normalize' (converge to the image mean) brightens them.
-	 * @default 'coarse'
+	 * Border handling, see `PyramidBorder`. The default 'clampPerLevel' repeats each level's edge texel like the mip chain
+	 * bloom, so wide terms repeat a σ-scale band of edge content; it is the closest match to the mip chain bloom.
+	 * 'clampToEdge' repeats only the outer pixel row (darker corners on dark-edged frames); 'normalize' repeats nothing and
+	 * converges to the in-frame mean (brighter corners there).
+	 * @default 'clampPerLevel'
 	 */
 	border?: PyramidBorder,
 	wrap?: Wrapping,
@@ -98,8 +99,8 @@ export function pyramidBloom(
 ) {
 	const wrap = options.wrap ?? ClampToEdgeWrapping;
 	const cacheId = options.cacheId ?? `${texture.uuid}_pyramidBloom`;
-	const border = options.border ?? 'coarse';
-	const padding = wrap === ClampToEdgeWrapping && border !== 'coarse' ? LEVEL_PADDING : 0;
+	const border = options.border ?? 'clampPerLevel';
+	const padding = wrap === ClampToEdgeWrapping && border !== 'clampPerLevel' ? LEVEL_PADDING : 0;
 	const normalize = border === 'normalize' && wrap === ClampToEdgeWrapping;
 	const { width: sourceWidth, height: sourceHeight } = getTextureSize(texture);
 
@@ -210,7 +211,7 @@ type BloomOutputOptions = {
 	coreTruncation?: number,
 	/** See `PyramidBloomOptions.quality` @default 'high' */
 	quality?: BloomQuality,
-	/** See `PyramidBloomOptions.border` @default 'coarse' */
+	/** See `PyramidBloomOptions.border` @default 'clampPerLevel' */
 	border?: PyramidBorder,
 	restoreGlobalState?: boolean,
 	target?: WebGLRenderTarget | null,
@@ -260,7 +261,7 @@ export function generatePyramidBloom(
  *
  * It is close but not identical: each mip level is a cascade of truncated, bilinearly sampled blurs rather than a
  * Gaussian, so on real frames the bloom term differs by ~35-40 dB PSNR (relative to its peak), mostly in the widest
- * terms near the image borders. The default 'coarse' border is the closest match.
+ * terms near the image borders. The default 'clampPerLevel' border is the closest match.
  *
  * Like the mip chain, the level count grows with resolution (mip count - 1 by default), so bloom gets hazier at higher
  * resolutions or DPR. Prefer `generatePyramidBloom()` for new code.

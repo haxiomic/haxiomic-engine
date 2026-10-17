@@ -25,12 +25,18 @@ import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 export type PyramidDownsampleFilter = 'box' | 'binomial4' | 'binomial6';
 export type PyramidUpsampleFilter = 'bilinear' | 'bspline';
 /**
- * - 'clamp': edge pixels extend outward, as a full-resolution clamp-to-edge blur
- * - 'coarse': each pyramid level clamps its own edge texels, as the `generateBlurredMipmaps()` chain does: wide blurs
- *   extend a band of edge content (≈ σ wide) rather than the edge pixels
- * - 'normalize': only pixels inside the image are averaged (normalized convolution); wide blurs converge to the mean
+ * How the blur treats pixels beyond the image edge.
+ *
+ * Both clamp modes repeat the image's edge outward, which suits most images (they are rarely surrounded by black).
+ * They differ only in what is repeated:
+ * - 'clampToEdge': the single outermost pixel row, as classic clamp-to-edge and the separable `gaussianBlur()` do
+ * - 'clampPerLevel': each pyramid level repeats its own edge texel, as the `generateBlurredMipmaps()` chain does, so a
+ *   wide blur repeats a σ-scale band of edge content rather than just the outer pixel row
+ *
+ * - 'normalize': opt-in alternative. Only pixels inside the image are averaged (normalized convolution), so nothing is
+ *   repeated and wide blurs converge to the in-frame mean
  */
-export type PyramidBorder = 'clamp' | 'coarse' | 'normalize';
+export type PyramidBorder = 'clampToEdge' | 'clampPerLevel' | 'normalize';
 
 export type PyramidGaussianBlurOptions = {
 	/**
@@ -62,11 +68,9 @@ export type PyramidGaussianBlurOptions = {
 	/** Restore the renderer's render target & viewport afterwards, as engine `gaussianBlur` does. @default true */
 	restoreGlobalState?: boolean,
 	/**
-	 * Border handling (with `ClampToEdgeWrapping`):
-	 * - 'clamp': edge pixels extend outward, as a full-resolution clamp-to-edge blur
-	 * - 'normalize': only pixels inside the image are averaged (normalized convolution). Wide blurs converge to the image
-	 *   mean instead of stretching edge pixels, and bright content at an edge isn't extended outward
-	 * @default 'clamp'
+	 * Border handling with `ClampToEdgeWrapping`, see `PyramidBorder`. The default repeats the outermost pixel row, as the
+	 * separable `gaussianBlur()` does.
+	 * @default 'clampToEdge'
 	 */
 	border?: PyramidBorder,
 	/** Force a specific pyramid depth (for testing) */
@@ -169,7 +173,7 @@ export function pyramidGaussianBlur(
 	// the source, so borders match a full-resolution clamped Gaussian
 	// With 'normalize' the source is zero-extended instead (the same padding argument holds: zero beyond ~2 texels) and the
 	// result is divided by the blurred inside-mask
-	const padding = wrap === ClampToEdgeWrapping && options.border !== 'coarse' ? LEVEL_PADDING : 0;
+	const padding = wrap === ClampToEdgeWrapping && options.border !== 'clampPerLevel' ? LEVEL_PADDING : 0;
 	const normalize = options.border === 'normalize' && wrap === ClampToEdgeWrapping;
 
 	// downsample chain
