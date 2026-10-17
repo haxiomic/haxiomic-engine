@@ -83,10 +83,18 @@ test('a fixed maxLod sums the same levels and weights at every resolution', () =
     for (const total of totals) expect(total).toBeCloseTo(expected, 3);
 });
 
-test('the dynamic (unbaked) sum clamps to the rendered top level too', () => {
+test('the dynamic (unbaked) sum clamps to the rendered top level in the shader', () => {
     const material = new BloomMipmapsMaterial({ bakeUniforms: false, maxLod: 12 });
     const glsl = accumulate(material, 3840, 2160);
-    expect(glsl).toContain('min(i, topLod)');
-    expect(material.uniforms.topLod!.value).toBe(11);
+    expect(glsl).toContain('min(i, BLOOM_TOP_LOD)');
+    // derived from the texture in the shader, not a uniform to keep in sync
+    expect(material.fragmentShader).toContain('#define BLOOM_TOP_LOD floor(log2(float(min(textureSize(mipmapSource, 0).x, textureSize(mipmapSource, 0).y))))');
+    expect('topLod' in material.uniforms).toBe(false);
     expect(material.uniforms.maxLod!.value).toBe(12);
+});
+
+test('the shader top level matches blurredMipmapTopLevel', () => {
+    for (const [w, h] of [[3840, 2160], [1600, 1000], [4096, 512], [7, 3], [2, 2]]) {
+        expect(Math.floor(Math.log2(Math.min(w, h)))).toBe(blurredMipmapTopLevel(w, h));
+    }
 });

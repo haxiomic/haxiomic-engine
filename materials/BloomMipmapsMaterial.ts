@@ -25,8 +25,6 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
     bloomFalloff: Uniform<number>,
     minLod: Uniform<number>,
     maxLod?: Uniform<number>,
-    /** Last level the blurred chain renders; set before each render */
-    topLod?: Uniform<number>,
     // Color grading uniforms (only used when colorGrading option is enabled)
     colorGradeContrast?: Uniform<number>,
     colorGradeSaturation?: Uniform<number>,
@@ -56,7 +54,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 
         const dynamicBloomAccumulation = /*glsl*/`
             for (float i = minLod; i < maxLod; i++) {
-                bloom += textureLod(mipmapSource, vUv, min(i, topLod)) * pow(i, -bloomFalloff);
+                bloom += textureLod(mipmapSource, vUv, min(i, BLOOM_TOP_LOD)) * pow(i, -bloomFalloff);
             }`.replace(/\n/g, '\\\n');
         
         super({
@@ -67,7 +65,6 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 bloomFalloff: new Uniform(-0.138),
                 minLod: new Uniform(1),
                 maxLod: new Uniform(0),
-                topLod: new Uniform(0),
                 // Color grading uniforms (0 = no change)
                 colorGradeContrast: new Uniform(0.0),
                 colorGradeSaturation: new Uniform(0.0),
@@ -101,7 +98,9 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 uniform float bloomFalloff;
                 uniform float maxLod;
                 uniform float minLod;
-                uniform float topLod;
+                // The last level generateBlurredMipmaps() renders: it halves the
+                // source until its shorter side reaches 1 pixel.
+                #define BLOOM_TOP_LOD floor(log2(float(min(textureSize(mipmapSource, 0).x, textureSize(mipmapSource, 0).y))))
                 #endif
 
                 #if COLOR_GRADING
@@ -183,7 +182,6 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             ));
             const maxLod = this.fixedMaxLod ?? Math.min(Math.max(0, mipmapCount - 1), topLod + 1);
             this.uniforms.maxLod!.value = maxLod;
-            this.uniforms.topLod!.value = topLod;
             const minLod = Math.min(this.uniforms.minLod.value, maxLod);
 
             // check for state change
