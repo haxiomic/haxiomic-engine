@@ -1,9 +1,7 @@
-import { ClampToEdgeWrapping, LinearFilter, Texture, Uniform, Vector2, WebGLRenderTarget, WebGLRenderer, Wrapping } from "three";
+import { ClampToEdgeWrapping, LinearFilter, Texture, Uniform, Vector2, WebGLRenderTarget, WebGLRenderer } from "three";
 import RenderTargetStore, { RenderTargetStoreOptions } from "./RenderTargetStore.js";
-import Blur1D from "../materials/Blur1D.js";
 import { Rendering } from "./Rendering.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
-import { mipmapCount } from "../math/Math.js";
 import { PyramidBorder } from "./PyramidGaussianBlur.js";
 import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, borderGLSL, bsplineGLSL, defaultCoreLinearSampling, downsampleVariance, fullscreenVertexShader, getTextureSize, snapshotRendererState } from "./PyramidInternals.js";
 
@@ -225,7 +223,8 @@ const DEFAULT_BLOOM_LEVELS = 9;
  *
  * Cost (RTX 5070): with `quality: 'balanced'` about that of the mip chain bloom (+0.1 ms per frame at 4K in apps);
  * 'high' adds ~1 ms at 4K when the finest level is only a few pixels. The defaults look like the mip bloom with
- * default options at 1080p.
+ * default options at 1080p; for other mip bloom settings fit `radius` once (e.g. 0.00226 for a 0.0173 kernel with
+ * truncationSigma 0.567, 9 levels).
  */
 export function generatePyramidBloom(
 	renderer: WebGLRenderer,
@@ -249,47 +248,6 @@ export function generatePyramidBloom(
 	return renderBloom(renderer, options, terms, 'generatePyramidBloom');
 }
 
-/**
- * Legacy shim for the `generateBlurredMipmaps()` + `BloomMipmapsMaterial` mip bloom: takes the same options and computes
- * a sum of Gaussians with the same weights and the same σ per level (to within ~0.3%), without the mip chain's aliasing.
- *
- * It is close but not identical: each mip level is a cascade of truncated, bilinearly sampled blurs rather than a
- * Gaussian, so on real frames the bloom term differs by ~35-40 dB PSNR (relative to its peak), mostly in the widest
- * terms near the image borders. The default 'clampPerLevel' border is the closest match.
- *
- * Like the mip chain, the level count grows with resolution (mip count - 1 by default), so bloom gets hazier at higher
- * resolutions or DPR. Prefer `generatePyramidBloom()` for new code.
- *
- * Pass the result to `BloomMipmapsMaterial` as `bloomSource`. (`bloomFalloff`, `minLod` and `maxLod` are applied here
- * rather than by the material.)
- */
-export function generatePyramidBloomLegacy(
-	renderer: WebGLRenderer,
-	options: BloomOutputOptions & {
-		/** As `generateBlurredMipmaps()` @default 1/16 */
-		blurKernel_heightFraction?: number,
-		/** As `generateBlurredMipmaps()` @default 0.5 */
-		truncationSigma?: number,
-		/** As `BloomMipmapsMaterial` @default -0.138 */
-		bloomFalloff?: number,
-		/** As `BloomMipmapsMaterial` @default 1 */
-		minLod?: number,
-		/** Exclusive, as `BloomMipmapsMaterial` @default mip count - 1 */
-		maxLod?: number,
-	},
-): WebGLRenderTarget {
-	const texture = options.source instanceof WebGLRenderTarget ? options.source.texture : options.source;
-	const { width, height } = getTextureSize(texture);
-	const terms = engineBloomTerms(width, height, {
-		blurKernel_heightFraction: options.blurKernel_heightFraction,
-		truncationSigma: options.truncationSigma,
-		bloomFalloff: options.bloomFalloff,
-		minLod: options.minLod,
-		maxLod: options.maxLod,
-	});
-	return renderBloom(renderer, options, terms, 'generatePyramidBloomLegacy');
-}
-
 function renderBloom(renderer: WebGLRenderer, options: BloomOutputOptions, terms: BloomTerm[], key: string) {
 	const source = options.source;
 	const texture = source instanceof WebGLRenderTarget ? source.texture : source;
@@ -305,63 +263,6 @@ function renderBloom(renderer: WebGLRenderer, options: BloomOutputOptions, terms
 		target: options.target,
 		cacheId: `${texture.uuid}_${key}`,
 	});
-}
-
-/**
- * Bloom terms matching haxiomic-engine `generateBlurredMipmaps()` + `BloomMipmapsMaterial`: the σ of each blurred mip
- * level as sampled by the material, and its weight i^-bloomFalloff. Use with `pyramidBloom()` for the same look without
- * the engine pyramid's aliasing.
- */
-export function engineBloomTerms(
-	width: number,
-	height: number,
-	options: {
-		blurKernel_heightFraction?: number,
-		truncationSigma?: number,
-		bloomFalloff?: number,
-		minLod?: number,
-		/** Exclusive, default mipCount - 1 as BloomMipmapsMaterial (so the level count grows with resolution) */
-		maxLod?: number,
-	} = {},
-): BloomTerm[] {
-	const fraction = options.blurKernel_heightFraction ?? 1 / 16;
-	const t = options.truncationSigma ?? 0.5;
-	const falloff = options.bloomFalloff ?? -0.138;
-	const minLod = options.minLod ?? 1;
-	const maxLod = options.maxLod ?? mipmapCount(width, height) - 1;
-	const kernelPixels = fraction * height * 0.5;
-
-	// Blur1D truncates at ±1/t σ: variance of a truncated normal
-	const b = 1 / t;
-	const pdf = Math.exp(-b * b / 2) / Math.sqrt(2 * Math.PI);
-	const truncatedFactor = 1 - (2 * b * pdf) / erf(b / Math.SQRT2);
-
-	const sigmaTexels = (kernel: number) => t * (Blur1D.nearestBestKernel(kernel) - 1) / 2;
-	const sx = sigmaTexels(kernelPixels), sy = sigmaTexels(kernelPixels * 0.5);
-
-	const terms: BloomTerm[] = [];
-	let variance = 0;
-	for (let i = 1; i < maxLod; i++) {
-		// x blur runs in level i-1 texels, y blur in level i texels
-		variance += truncatedFactor * (sx * sx * Math.pow(4, i - 1) + sy * sy * Math.pow(4, i)) / 2;
-		// the x pass renders at level i, sampling level i-1 between texels, and the y decimation is a 2-tap box:
-		// together ≈ 0.5 level i-1 texels²
-		variance += 0.5 * Math.pow(4, i - 1);
-		if (i >= minLod) {
-			// + bilinear magnification of level i (tent, variance 1/6 texel²)
-			terms.push({ sigma: Math.sqrt(variance + Math.pow(4, i) / 6), weight: Math.pow(i, -falloff) });
-		}
-	}
-	return terms;
-}
-
-function erf(x: number) {
-	// Abramowitz & Stegun 7.1.26
-	const s = Math.sign(x);
-	x = Math.abs(x);
-	const k = 1 / (1 + 0.3275911 * x);
-	const y = 1 - (((((1.061405429 * k - 1.453152027) * k) + 1.421413741) * k - 0.284496736) * k + 0.254829592) * k * Math.exp(-x * x);
-	return s * y;
 }
 
 /**
