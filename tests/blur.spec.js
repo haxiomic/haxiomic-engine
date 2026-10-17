@@ -40,6 +40,8 @@ test.describe('gaussian blur & pyramid bloom', () => {
         // the mipmap chain bloom is ~85% here
         expect(await page.evaluate(() => window.bloomShiftVariance('pyramid'))).toBeLessThan(0.003)
         expect(await page.evaluate(() => window.bloomShiftVariance('shim'))).toBeLessThan(0.003)
+        // cheaper preset: documented as ≈ 0.4% of peak
+        expect(await page.evaluate(() => window.bloomShiftVariance('balanced'))).toBeLessThan(0.008)
     })
 
     test('generatePyramidBloom is resolution independent', async ({ page }) => {

@@ -4,7 +4,7 @@ import Blur1D from "../materials/Blur1D.js";
 import { Rendering } from "./Rendering.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 import { mipmapCount } from "../math/Math.js";
-import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, bsplineGLSL, defaultCoreLinearSampling, downsampleVariance, fullscreenVertexShader, getTextureSize, snapshotRendererState } from "./PyramidGaussianBlur.js";
+import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, PyramidBorder, borderGLSL, bsplineGLSL, defaultCoreLinearSampling, downsampleVariance, fullscreenVertexShader, getTextureSize, snapshotRendererState } from "./PyramidGaussianBlur.js";
 
 /**
  * Multi-scale bloom: Σ weightᵢ · Gaussian(σᵢ) of the source, evaluated with one shared anti-aliased pyramid.
@@ -18,10 +18,33 @@ import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVE
 export type BloomTerm = { sigma: number, weight: number };
 
 export type PyramidBloomOptions = {
-	/** Smallest core σ in texels of its pyramid level, as `PyramidGaussianBlurOptions.minCoreSigma`. @default 3 */
-	minCoreSigma?: number,
+	/**
+	 * Smallest core σ in texels of its pyramid level, as `PyramidGaussianBlurOptions.minCoreSigma`, optionally per term
+	 * (index in σ order). Terms below 2·minCoreSigma pixels run at full resolution, which is exact but the most expensive
+	 * part of the bloom; a smaller value for the finest term moves it to half resolution.
+	 * @default 3
+	 */
+	minCoreSigma?: MinCoreSigma,
+	/** Gaussian truncation of the core kernels, in σ @default 5 */
+	coreTruncation?: number,
+	/**
+	 * Presets for `minCoreSigma` & `coreTruncation` (explicit values override):
+	 * - 'high': minCoreSigma 3, 5σ. Shift variance ≈ 0.01% of peak
+	 * - 'balanced': minCoreSigma 2 (1.5 for the finest term), 4σ. Shift variance ≈ 0.4% of peak (≈ 0.2 8-bit levels of
+	 *   flicker on a strong bloom, still invisible) at roughly a third of the cost when the finest term would otherwise
+	 *   run at full resolution: about the cost of the mip chain bloom at 4K
+	 * @default 'high'
+	 */
+	quality?: BloomQuality,
 	/** Restore the renderer's render target & viewport afterwards. @default true */
 	restoreGlobalState?: boolean,
+	/**
+	 * Border handling, see `PyramidBorder`. 'coarse' clamps each level at its own resolution like the mip chain, so wide
+	 * terms extend a band of edge content rather than the edge pixels; it is the closest match to the mip chain bloom on
+	 * dark-edged scenes. 'clamp' darkens corners there and 'normalize' (converge to the image mean) brightens them.
+	 * @default 'coarse'
+	 */
+	border?: PyramidBorder,
 	wrap?: Wrapping,
 	target?: WebGLRenderTarget | null,
 	cacheId?: string | null,
@@ -40,10 +63,21 @@ function cascadeVariance(k: number) {
 /** Maximum number of terms evaluated at the same pyramid level */
 const MAX_TERMS_PER_LEVEL = 4;
 
-export function planPyramidBloom(terms: BloomTerm[], minCoreSigma = 3) {
+export type MinCoreSigma = number | ((term: BloomTerm, index: number) => number);
+export type BloomQuality = 'high' | 'balanced';
+
+const qualityPresets: Record<BloomQuality, { minCoreSigma: MinCoreSigma, coreTruncation: number }> = {
+	high: { minCoreSigma: 3, coreTruncation: DEFAULT_CORE_TRUNCATION },
+	// the finest term carries the bloom peak but runs at full resolution unless allowed a smaller core σ
+	balanced: { minCoreSigma: (_term, index) => index === 0 ? 1.5 : 2, coreTruncation: 4 },
+};
+
+export function planPyramidBloom(terms: BloomTerm[], minCoreSigmaOption: MinCoreSigma = 3) {
 	const planned: { level: number, coreSigma: number, weight: number, sigma: number }[] = [];
+	const ordered = terms.slice().sort((a, b) => a.sigma - b.sigma);
 	for (const term of terms) {
 		if (term.weight === 0) continue;
+		const minCoreSigma = typeof minCoreSigmaOption === 'function' ? minCoreSigmaOption(term, ordered.indexOf(term)) : minCoreSigmaOption;
 		let level = Math.max(0, Math.floor(Math.log2(Math.max(term.sigma, 1e-6) / minCoreSigma)));
 		const coreVariance = (k: number) => Math.pow(term.sigma / Math.pow(2, k), 2) - cascadeVariance(k);
 		while (level > 0 && coreVariance(level) < minCoreSigma * minCoreSigma) level--;
@@ -64,7 +98,9 @@ export function pyramidBloom(
 ) {
 	const wrap = options.wrap ?? ClampToEdgeWrapping;
 	const cacheId = options.cacheId ?? `${texture.uuid}_pyramidBloom`;
-	const padding = wrap === ClampToEdgeWrapping ? LEVEL_PADDING : 0;
+	const border = options.border ?? 'coarse';
+	const padding = wrap === ClampToEdgeWrapping && border !== 'coarse' ? LEVEL_PADDING : 0;
+	const normalize = border === 'normalize' && wrap === ClampToEdgeWrapping;
 	const { width: sourceWidth, height: sourceHeight } = getTextureSize(texture);
 
 	const textureOptions: RenderTargetStoreOptions = {
@@ -75,7 +111,9 @@ export function pyramidBloom(
 		wrapT: wrap,
 	}
 
-	const plan = planPyramidBloom(terms, options.minCoreSigma ?? 3);
+	const preset = qualityPresets[options.quality ?? 'high'];
+	const coreTruncation = options.coreTruncation ?? preset.coreTruncation;
+	const plan = planPyramidBloom(terms, options.minCoreSigma ?? preset.minCoreSigma);
 	const restoreState = options.restoreGlobalState !== false ? snapshotRendererState(renderer) : null;
 	const maxLevel = Math.max(0, ...plan.map(p => p.level));
 
@@ -88,9 +126,10 @@ export function pyramidBloom(
 		const width = unpaddedWidth + 2 * padding, height = unpaddedHeight + 2 * padding;
 		const levelTarget = renderTargetStore.getRenderTarget(`${cacheId}_bloom_down_${j}`, width, height, textureOptions);
 		const input = levels[j - 1];
-		const shader = DownsampleMaterial.get('binomial4');
+		const shader = DownsampleMaterial.get('binomial4', normalize && j === 1);
 		shader.uniforms.source.value = input.texture;
 		shader.uniforms.sourceInvSize.value.set(1 / input.width, 1 / input.height);
+		shader.uniforms.sourceSize.value.set(input.width, input.height);
 		shader.uniforms.sourceOffset.value = (j === 1 ? 0 : padding) - 2 * padding;
 		Rendering.shaderMaterialPass(renderer, { target: levelTarget, shader, restoreGlobalState: false });
 		levels.push({ texture: levelTarget.texture, width, height });
@@ -107,15 +146,18 @@ export function pyramidBloom(
 		if (levelTerms.length === 0 && !accumulated) continue;
 
 		// x pass per term, y taps (pre-weighted) are applied in the cascade pass
+		// ('normalize' at full resolution: read zero outside the image, which needs texel-centred taps)
+		const zeroOutside = normalize && k === 0;
 		const termTaps: Vector2[][] = [];
 		const termSources: Texture[] = [];
 		levelTerms.forEach((term, i) => {
-			const taps = GaussianTapsMaterial.computeTaps(term.coreSigma, DEFAULT_CORE_TRUNCATION, defaultCoreLinearSampling(k));
+			const taps = GaussianTapsMaterial.computeTaps(term.coreSigma, coreTruncation, !zeroOutside && defaultCoreLinearSampling(k));
 			const tmp = renderTargetStore.getRenderTarget(`${cacheId}_bloom_x_${k}_${i}`, level.width, level.height, textureOptions);
-			const blurX = GaussianTapsMaterial.get(taps.length);
+			const blurX = GaussianTapsMaterial.get(taps.length, 'x', { zeroOutside });
 			blurX.setTaps(taps);
 			blurX.uniforms.source.value = level.texture;
 			blurX.uniforms.sourceInvSize.value.set(1 / level.width, 1 / level.height);
+			blurX.uniforms.sourceSize.value.set(level.width, level.height);
 			blurX.uniforms.direction.value.set(1, 0);
 			Rendering.shaderMaterialPass(renderer, { target: tmp, shader: blurX, restoreGlobalState: false });
 			for (const t of taps) t.y *= term.weight;
@@ -124,12 +166,23 @@ export function pyramidBloom(
 		});
 
 		const tapCount = Math.max(0, ...termTaps.map(t => t.length));
-		const shader = CascadeMaterial.get(termTaps.length, tapCount, accumulated != null);
+		const shader = CascadeMaterial.get(termTaps.length, tapCount, accumulated != null, { zeroOutside, normalize });
 		shader.uniforms.sourceInvSize.value.set(1 / level.width, 1 / level.height);
+		shader.uniforms.sourceSize.value.set(level.width, level.height);
 		termSources.forEach((source, i) => {
 			shader.uniforms.sources.value[i] = source;
+			shader.uniforms.termSigma.value[i] = levelTerms[i].sigma;
 			shader.setTaps(i, termTaps[i]);
 		});
+		if (normalize) {
+			// level k texel centre (padded) → source pixels: (gl_FragCoord - padding) · 2^k
+			const outPadding = k === 0 ? 0 : padding;
+			const pxPerTexelX = k === 0 ? sourceWidth / target.width : Math.pow(2, k);
+			const pxPerTexelY = k === 0 ? sourceHeight / target.height : Math.pow(2, k);
+			shader.uniforms.normImageSize.value.set(sourceWidth, sourceHeight);
+			shader.uniforms.normPxScale.value.set(pxPerTexelX, pxPerTexelY);
+			shader.uniforms.normPxOffset.value.set(-outPadding * pxPerTexelX, -outPadding * pxPerTexelY);
+		}
 		if (accumulated) {
 			// output texel (padded, level k) → level k+1 padded texel coordinates
 			const outPadding = k === 0 ? 0 : padding;
@@ -151,8 +204,14 @@ export function pyramidBloom(
 type BloomOutputOptions = {
 	/** HDR scene */
 	source: WebGLRenderTarget | Texture,
-	/** Smallest core σ in texels of its pyramid level, see `PyramidGaussianBlurOptions.minCoreSigma` */
-	minCoreSigma?: number,
+	/** See `PyramidBloomOptions.minCoreSigma` */
+	minCoreSigma?: MinCoreSigma,
+	/** See `PyramidBloomOptions.coreTruncation` */
+	coreTruncation?: number,
+	/** See `PyramidBloomOptions.quality` @default 'high' */
+	quality?: BloomQuality,
+	/** See `PyramidBloomOptions.border` @default 'coarse' */
+	border?: PyramidBorder,
 	restoreGlobalState?: boolean,
 	target?: WebGLRenderTarget | null,
 	renderTargetStore?: RenderTargetStore,
@@ -169,8 +228,8 @@ export const DEFAULT_BLOOM_LEVELS = 9;
  * Multi-scale bloom term Σ levelᵢ · i^-bloomFalloff, where level i (1-based) is a Gaussian blur with σ = radius · 2^(i-1)
  * image heights. Resolution independent: the same at any resolution, aspect ratio or DPR.
  *
- * Pass the result to `BloomMipmapsMaterial` as `bloomSource`. The defaults reproduce the material's mip bloom (with
- * `generateBlurredMipmaps()` default options) as it looks at 1920×1080. For a 1:1 swap of an existing mip bloom setup
+ * Pass the result to `BloomMipmapsMaterial` as `bloomSource`. The defaults approximate the material's mip bloom (with
+ * `generateBlurredMipmaps()` default options) as it looks at 1920×1080. To keep an existing mip bloom setup's options
  * see `generatePyramidBloomLegacy()`.
  */
 export function generatePyramidBloom(
@@ -196,8 +255,12 @@ export function generatePyramidBloom(
 }
 
 /**
- * Legacy shim: a 1:1 swap for the `generateBlurredMipmaps()` + `BloomMipmapsMaterial` mip bloom. Takes the same options
- * and reproduces the same bloom (each level's σ to within ~0.3%), without the mip chain's aliasing.
+ * Legacy shim for the `generateBlurredMipmaps()` + `BloomMipmapsMaterial` mip bloom: takes the same options and computes
+ * a sum of Gaussians with the same weights and the same σ per level (to within ~0.3%), without the mip chain's aliasing.
+ *
+ * It is close but not identical: each mip level is a cascade of truncated, bilinearly sampled blurs rather than a
+ * Gaussian, so on real frames the bloom term differs by ~35-40 dB PSNR (relative to its peak), mostly in the widest
+ * terms near the image borders. The default 'coarse' border is the closest match.
  *
  * Like the mip chain, the level count grows with resolution (mip count - 1 by default), so bloom gets hazier at higher
  * resolutions or DPR. Prefer `generatePyramidBloom()` for new code.
@@ -240,6 +303,9 @@ function renderBloom(renderer: WebGLRenderer, options: BloomOutputOptions, terms
 		: RenderTargetStore.getStoreForRenderer(renderer));
 	return pyramidBloom(renderer, store, texture, terms, {
 		minCoreSigma: options.minCoreSigma,
+		coreTruncation: options.coreTruncation,
+		quality: options.quality,
+		border: options.border,
 		restoreGlobalState: options.restoreGlobalState,
 		target: options.target,
 		cacheId: `${texture.uuid}_${key}`,
@@ -310,7 +376,15 @@ function erf(x: number) {
 class CascadeMaterial extends ShaderMaterial<{
 	sources: Uniform<(Texture | null)[]>,
 	sourceInvSize: Uniform<Vector2>,
+	/** level size in texels, for zeroOutside */
+	sourceSize: Uniform<Vector2>,
 	taps: Uniform<Vector2[]>,
+	/** σ of each term in source pixels, for normalize */
+	termSigma: Uniform<number[]>,
+	normImageSize: Uniform<Vector2>,
+	/** source pixel position = gl_FragCoord.xy * normPxScale + normPxOffset */
+	normPxScale: Uniform<Vector2>,
+	normPxOffset: Uniform<Vector2>,
 	addSource: Uniform<Texture | null>,
 	addInvSize: Uniform<Vector2>,
 	addScale: Uniform<Vector2>,
@@ -319,11 +393,15 @@ class CascadeMaterial extends ShaderMaterial<{
 
 	static instances = new Map<string, CascadeMaterial>();
 
-	static get(termCount: number, tapCount: number, add: boolean) {
-		const key = `${termCount}_${tapCount}_${add}`;
+	/**
+	 * @param flags.zeroOutside taps outside the level read zero (full resolution 'normalize', texel-centred taps only)
+	 * @param flags.normalize divide each term by its blurred inside-mask
+	 */
+	static get(termCount: number, tapCount: number, add: boolean, flags: { zeroOutside?: boolean, normalize?: boolean } = {}) {
+		const key = `${termCount}_${tapCount}_${add}_${!!flags.zeroOutside}_${!!flags.normalize}`;
 		let instance = CascadeMaterial.instances.get(key);
 		if (!instance) {
-			instance = new CascadeMaterial(termCount, tapCount, add);
+			instance = new CascadeMaterial(termCount, tapCount, add, !!flags.zeroOutside, !!flags.normalize);
 			CascadeMaterial.instances.set(key, instance);
 		}
 		return instance;
@@ -331,22 +409,32 @@ class CascadeMaterial extends ShaderMaterial<{
 
 	tapCount: number;
 
-	constructor(termCount: number, tapCount: number, add: boolean) {
-		// sampler arrays must be indexed by constants, so each term's loop is generated
+	constructor(termCount: number, tapCount: number, add: boolean, zeroOutside: boolean, normalize: boolean) {
 		// unrolled with constant indices (sampler arrays require them, and it is faster)
 		const termLoops: string[] = [];
 		for (let t = 0; t < termCount; t++) {
+			termLoops.push('term = vec4(0.0);');
 			for (let i = 0; i < tapCount; i++) {
 				const k = t * tapCount + i;
-				termLoops.push(`result += textureLod(sources[${t}], (c + vec2(0.0, taps[${k}].x)) * sourceInvSize, 0.0) * taps[${k}].y;`);
+				termLoops.push(zeroOutside
+					? `tc = c + vec2(0.0, taps[${k}].x); term += textureLod(sources[${t}], tc * sourceInvSize, 0.0) * (taps[${k}].y * insideTexels(tc, sourceSize));`
+					: `term += textureLod(sources[${t}], (c + vec2(0.0, taps[${k}].x)) * sourceInvSize, 0.0) * taps[${k}].y;`);
 			}
+			termLoops.push(normalize
+				? `result += term / insideMaskBlur(px, normImageSize, termSigma[${t}]);`
+				: 'result += term;');
 		}
 
 		super({
 			uniforms: {
 				sources: new Uniform(new Array(Math.max(termCount, 1)).fill(null)),
 				sourceInvSize: new Uniform(new Vector2()),
+				sourceSize: new Uniform(new Vector2()),
 				taps: new Uniform(new Array(Math.max(termCount * tapCount, 1)).fill(null).map(() => new Vector2())),
+				termSigma: new Uniform(new Array(Math.max(termCount, 1)).fill(1)),
+				normImageSize: new Uniform(new Vector2(1, 1)),
+				normPxScale: new Uniform(new Vector2(1, 1)),
+				normPxOffset: new Uniform(new Vector2()),
 				addSource: new Uniform(null),
 				addInvSize: new Uniform(new Vector2()),
 				addScale: new Uniform(new Vector2()),
@@ -362,17 +450,26 @@ class CascadeMaterial extends ShaderMaterial<{
 				#if TERM_COUNT > 0
 				uniform sampler2D sources[TERM_COUNT];
 				uniform vec2 taps[TERM_COUNT * TAP_COUNT];
+				uniform float termSigma[TERM_COUNT];
 				#endif
 				uniform vec2 sourceInvSize;
+				uniform vec2 sourceSize;
+				uniform vec2 normImageSize;
+				uniform vec2 normPxScale;
+				uniform vec2 normPxOffset;
 				uniform sampler2D addSource;
 				uniform vec2 addInvSize;
 				uniform vec2 addScale;
 				uniform float addOffset;
 
 				${bsplineGLSL}
+				${borderGLSL}
 
 				void main() {
 					vec2 c = gl_FragCoord.xy;
+					vec2 px = c * normPxScale + normPxOffset;
+					vec2 tc;
+					vec4 term;
 					vec4 result = vec4(0.0);
 					${termLoops.join('\n')}
 					#if ADD
