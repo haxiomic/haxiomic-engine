@@ -3,8 +3,11 @@
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { extname, join, normalize } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const ROOT = new URL('..', import.meta.url).pathname
+// A file URL's pathname is not a filesystem path on Windows (`/C:/...`) or with
+// encoded characters (`%20`); convert it.
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json' }
 
 export function serve(port = 5177) {
@@ -20,7 +23,7 @@ export function serve(port = 5177) {
     return new Promise(resolve => server.listen(port, () => resolve(server)))
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     const port = Number(process.argv[2] ?? 5177)
     await serve(port)
     console.log(`serving ${ROOT} on http://localhost:${port}`)
