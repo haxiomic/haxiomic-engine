@@ -69,32 +69,3 @@ test('a wide source never reads levels the chain does not render', () => {
     const top = blurredMipmapTopLevel(4096, 512);
     for (const t of terms(glsl)) expect(t.lod).toBeLessThanOrEqual(top);
 });
-
-test('a fixed maxLod sums the same levels and weights at every resolution', () => {
-    const totals = [[3840, 2160], [7680, 4320], [1600, 1000]].map(([w, h]) => {
-        const material = new BloomMipmapsMaterial({ bakeUniforms: true, maxLod: 12 });
-        material.uniforms.bloomFalloff.value = -0.476;
-        const found = terms(accumulate(material, w, h));
-        for (const t of found) expect(t.lod).toBeLessThanOrEqual(blurredMipmapTopLevel(w, h));
-        return found.reduce((sum, t) => sum + t.weight, 0);
-    });
-    let expected = 0;
-    for (let i = 1; i < 12; i++) expected += Math.pow(i, 0.476);
-    for (const total of totals) expect(total).toBeCloseTo(expected, 3);
-});
-
-test('the dynamic (unbaked) sum clamps to the rendered top level in the shader', () => {
-    const material = new BloomMipmapsMaterial({ bakeUniforms: false, maxLod: 12 });
-    const glsl = accumulate(material, 3840, 2160);
-    expect(glsl).toContain('min(i, BLOOM_TOP_LOD)');
-    // derived from the texture in the shader, not a uniform to keep in sync
-    expect(material.fragmentShader).toContain('#define BLOOM_TOP_LOD floor(log2(float(min(textureSize(mipmapSource, 0).x, textureSize(mipmapSource, 0).y))))');
-    expect('topLod' in material.uniforms).toBe(false);
-    expect(material.uniforms.maxLod!.value).toBe(12);
-});
-
-test('the shader top level matches blurredMipmapTopLevel', () => {
-    for (const [w, h] of [[3840, 2160], [1600, 1000], [4096, 512], [7, 3], [2, 2]]) {
-        expect(Math.floor(Math.log2(Math.min(w, h)))).toBe(blurredMipmapTopLevel(w, h));
-    }
-});

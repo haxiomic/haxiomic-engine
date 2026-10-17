@@ -8,14 +8,6 @@ import { ShaderMaterial } from "./ShaderMaterial.js";
  * Use with `generateBlurredMipmaps()` to create a blurred mipmap chain
  * 
  * **Requires minFilter set to `LINEAR_MIPMAP_LINEAR` filtering**
- *
- * Levels are summed from `minLod` up to (not including) `maxLod`. By default
- * `maxLod` follows the source's mipmap count, so a larger source sums more of
- * the widest, near screen-wide levels and blooms differently. Pass a fixed
- * `maxLod` for the same bloom at every resolution: levels the chain doesn't
- * reach reuse its top level, which already spans the whole image.
- *
- * Levels past the last one `generateBlurredMipmaps()` renders are never read.
  */
 export class BloomMipmapsMaterial extends ShaderMaterial<{
     source: Uniform<Texture | null>,
@@ -33,18 +25,10 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 
     bakeUniforms: boolean;
 
-    /**
-     * Sum levels up to this one (exclusive) at every source size, or follow the
-     * source's mipmap count when undefined.
-     */
-    fixedMaxLod: number | undefined;
-
     constructor(options_?: {
         bakeUniforms?: boolean,
         /** Enable color grading (contrast, saturation, exponent adjustments) */
         colorGrading?: boolean,
-        /** See `fixedMaxLod` */
-        maxLod?: number,
     }) {
         const defaultOptions = {
             bakeUniforms: true,
@@ -54,7 +38,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 
         const dynamicBloomAccumulation = /*glsl*/`
             for (float i = minLod; i < maxLod; i++) {
-                bloom += textureLod(mipmapSource, vUv, min(i, BLOOM_TOP_LOD)) * pow(i, -bloomFalloff);
+                bloom += textureLod(mipmapSource, vUv, i) * pow(i, -bloomFalloff);
             }`.replace(/\n/g, '\\\n');
         
         super({
@@ -98,9 +82,6 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 uniform float bloomFalloff;
                 uniform float maxLod;
                 uniform float minLod;
-                // The last level generateBlurredMipmaps() renders: it halves the
-                // source until its shorter side reaches 1 pixel.
-                #define BLOOM_TOP_LOD floor(log2(float(min(textureSize(mipmapSource, 0).x, textureSize(mipmapSource, 0).y))))
                 #endif
 
                 #if COLOR_GRADING
@@ -155,13 +136,11 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
         });
 
         this.bakeUniforms = options.bakeUniforms ?? true;
-        this.fixedMaxLod = options.maxLod;
 
         let definesState = {
             bakeUniforms: false,
             maxLod: NaN,
             minLod: NaN,
-            topLod: NaN,
             bloomFalloff: NaN,
         }
 
@@ -172,15 +151,14 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             }
 
             const mipmapSource = this.uniforms.mipmapSource!.value;
-            const mipmapCount: number = mipmapSource?.mipmaps?.length ?? 0;
-            // The chain stops when either side reaches 1 pixel, which can be
-            // short of the levels allocated: never read past what it renders.
+            let mipmapCount: number = mipmapSource?.mipmaps?.length ?? 0;
+            let maxLod = Math.max(0, mipmapCount - 1);
+            // The chain is allocated down the longer side but rendered until the
+            // shorter reaches 1 pixel: never sum levels it did not write.
             const image = mipmapSource?.image as { width?: number, height?: number } | undefined;
-            const topLod = Math.max(0, Math.min(
-                mipmapCount - 1,
-                image?.width && image?.height ? blurredMipmapTopLevel(image.width, image.height) : Infinity,
-            ));
-            const maxLod = this.fixedMaxLod ?? Math.min(Math.max(0, mipmapCount - 1), topLod + 1);
+            if (image?.width && image?.height) {
+                maxLod = Math.min(maxLod, blurredMipmapTopLevel(image.width, image.height) + 1);
+            }
             this.uniforms.maxLod!.value = maxLod;
             const minLod = Math.min(this.uniforms.minLod.value, maxLod);
 
@@ -193,7 +171,6 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 let bakedUniformValuesChanged = (
                     (definesState.minLod !== minLod) ||
                     (definesState.maxLod !== maxLod) ||
-                    (definesState.topLod !== topLod) ||
                     (definesState.bloomFalloff !== this.uniforms.bloomFalloff.value)
                 );
                 definesNeedUpdate = definesNeedUpdate || bakedUniformValuesChanged;
@@ -205,7 +182,6 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                     this.defines.BLOOM_ACCUMULATION = getBloomAccumulationShaderOptimized({
                         minLod,
                         maxLod,
-                        topLod,
                         bloomFalloff: this.uniforms.bloomFalloff.value,
                     });
                     this.defines.BLOOM_FALLOFF = this.uniforms.bloomFalloff.value.toFixed(3);
@@ -222,59 +198,97 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 definesState.bakeUniforms = this.bakeUniforms;
                 definesState.minLod = minLod;
                 definesState.maxLod = maxLod;
-                definesState.topLod = topLod;
                 definesState.bloomFalloff = this.uniforms.bloomFalloff.value
 
                 this.needsUpdate = true;
             }
         }
 
-        /**
-         * The weighted levels to sum: level i weighs pow(i, -bloomFalloff) and is
-         * read at min(i, topLod). Terms reading the same level are merged.
-         */
-        function bloomTerms(
-            { minLod, maxLod, topLod, bloomFalloff }: { minLod: number, maxLod: number, topLod: number, bloomFalloff: number }
+        function getBloomAccumulationShader(
+            { minLod, maxLod, bloomFalloff }: { minLod: number, maxLod: number, bloomFalloff: number }
         ) {
-            const epsilon = 1e-6; // Small value to avoid log(0)/pow(0, negative)
-            const terms: { lod: number, weight: number }[] = [];
+            let glsl = '';
             for (let i = minLod; i < maxLod; i++) {
-                let weight = Math.pow(Math.max(i, epsilon), -bloomFalloff);
-                // pow(0, 0) is 1
-                if (Math.abs(i) < epsilon && Math.abs(bloomFalloff) < epsilon) weight = 1.0;
-                const lod = Math.min(i, topLod);
-                const last = terms[terms.length - 1];
-                if (last && last.lod === lod) last.weight += weight;
-                else terms.push({ lod, weight });
+                let multiplier = Math.pow(i, -bloomFalloff);
+                glsl += /*glsl*/`bloom += textureLod(mipmapSource, vUv, ${i.toFixed(1)}) * ${multiplier.toFixed(3)};\n`;
             }
-            return terms;
+            return glsl.replace(/\n/g, '\\\n');
         }
 
         /**
-         * Reduce textureLod calls by combining pairs of adjacent levels (trilinear filtering)
-         * Requires LINEAR_MIPMAP_LINEAR filtering for this to work
+         * Reduce textureLod calls by combining pairs of levels (trilinear filtering)
+         * Required LINEAR_MIPMAP_LINEAR filtering for this to work
          */
         function getBloomAccumulationShaderOptimized(
-            params: { minLod: number, maxLod: number, topLod: number, bloomFalloff: number }
+            { minLod, maxLod, bloomFalloff }: { minLod: number, maxLod: number, bloomFalloff: number }
         ): string {
-            const epsilon = 1e-6;
-            const terms = bloomTerms(params);
             let glsl = '';
-            for (let t = 0; t < terms.length; t++) {
-                const a = terms[t], b = terms[t + 1];
-                if (b && b.lod === a.lod + 1) {
-                    // One trilinear read between the two levels carries both weights
-                    const total = a.weight + b.weight;
-                    if (total > epsilon) {
-                        const f = Math.max(0.0, Math.min(1.0, b.weight / total));
-                        glsl += /*glsl*/ `bloom += textureLod(mipmapSource, vUv, ${(a.lod + f).toFixed(5)}) * ${total.toFixed(5)};\n`;
-                    }
-                    t++;
-                } else if (a.weight > epsilon) {
-                    glsl += /*glsl*/ `bloom += textureLod(mipmapSource, vUv, ${a.lod.toFixed(1)}) * ${a.weight.toFixed(5)};\n`;
+            const epsilon = 1e-6; // Small value to avoid log(0)/pow(0, negative)
+
+            // Loop over pairs of levels
+            let currentLod = minLod;
+            for (; currentLod < maxLod - 1; currentLod += 2) {
+                const lod1 = currentLod;
+                const lod2 = currentLod + 1.0;
+
+                // Calculate weights W1 and W2
+                // Handle lod = 0 carefully
+                const w1_base = Math.max(lod1, epsilon);
+                const w2_base = Math.max(lod2, epsilon); // lod2 is always >= 1 if minLod >= 0
+
+                let W1 = Math.pow(w1_base, -bloomFalloff);
+                const W2 = Math.pow(w2_base, -bloomFalloff);
+
+                // Correct W1 specifically for pow(0, 0) case if falloff is exactly 0
+                if (Math.abs(lod1) < epsilon && Math.abs(bloomFalloff) < epsilon) {
+                    W1 = 1.0;
+                }
+
+                const W_total = W1 + W2;
+
+                // Proceed only if the combined weight is significant
+                if (W_total > epsilon) {
+                    // Calculate fractional offset f = W2 / W_total
+                    const f = W2 / W_total;
+                    // Clamp f just in case of numerical instability, although unlikely here
+                    const clamped_f = Math.max(0.0, Math.min(1.0, f));
+
+                    // Calculate the LOD to sample at for trilinear blend
+                    const sampleLod = lod1 + clamped_f;
+
+                    // The correction factor K is the total weight
+                    const K = W_total;
+
+                    // Add GLSL line for this pair
+                    // Use higher precision for sampleLod and K
+                    glsl += /*glsl*/ `bloom += textureLod(mipmapSource, vUv, ${sampleLod.toFixed(5)}) * ${K.toFixed(5)};\n`;
                 }
             }
-            // escape newlines for embedding in a define
+
+            // Handle the last level if the number of levels was odd
+            // This occurs if currentLod stopped exactly at maxLod - 1
+            if (currentLod < maxLod) { // Equivalent to checking currentLod == maxLod - 1
+                const lastLod = currentLod; // which is maxLod - 1
+
+                // Calculate weight for the last level
+                const W_last_base = Math.max(lastLod, epsilon);
+                let W_last = Math.pow(W_last_base, -bloomFalloff);
+
+                // Correct W_last specifically for pow(0, 0) case
+                 if (Math.abs(lastLod) < epsilon && Math.abs(bloomFalloff) < epsilon) {
+                    W_last = 1.0;
+                }
+
+
+                // Add GLSL line only if weight is significant
+                if (W_last > epsilon) {
+                     // Use original precision spec for consistency or update as needed
+                    glsl += /*glsl*/ `bloom += textureLod(mipmapSource, vUv, ${lastLod.toFixed(1)}) * ${W_last.toFixed(5)};\n`;
+                }
+
+            }
+
+            // Replace newlines for embedding if necessary (kept from original)
             return glsl.replace(/\n/g, '\\\n');
         }
     }
