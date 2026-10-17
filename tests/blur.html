@@ -117,10 +117,12 @@ window.blurShiftVariance = () => {
 
 /**
  * 'pyramid': generatePyramidBloom, 'shim': generatePyramidBloomLegacy, 'mipmaps': the mipmap chain bloom
- * (generateBlurredMipmaps + BloomMipmapsMaterial), for comparison
+ * (generateBlurredMipmaps + BloomMipmapsMaterial), for comparison, 'antiAliased': the mipmap chain bloom with
+ * `antiAliased: true` and `smoothLevels: 2`. `blurKernel_heightFraction` sets the mip chain's kernel
  */
-window.bloomShiftVariance = (method = 'pyramid') => {
-    const options = { blurKernel_heightFraction: 1 / 32 }
+window.bloomShiftVariance = (method = 'pyramid', blurKernel_heightFraction = 1 / 32) => {
+    const options = { blurKernel_heightFraction }
+    const antiAliased = method === 'antiAliased'
     if (method === 'pyramid') return shiftVariance(t => generatePyramidBloom(renderer, { source: t, radius: 0.004, levels: 5 }), 256, 100, positions)
     // a finest level of σ ≈ 4 px, which 'balanced' runs at half resolution
     if (method === 'balanced') return shiftVariance(t => generatePyramidBloom(renderer, { source: t, radius: 0.016, levels: 4, quality: 'balanced' }), 256, 100, positions)
@@ -129,12 +131,12 @@ window.bloomShiftVariance = (method = 'pyramid') => {
     initMipmapArray(mipTarget)
     const out = new WebGLRenderTarget(256, 256, { type: FloatType })
     const copy = new CopyMaterial()
-    const material = new BloomMipmapsMaterial()
+    const material = new BloomMipmapsMaterial({ smoothLevels: antiAliased ? 2 : 0 })
     material.uniforms.bloomStrength.value = 1
     return shiftVariance(t => {
         copy.uniforms.source.value = t
         Rendering.shaderMaterialPass(renderer, { target: mipTarget, shader: copy, restoreGlobalState: true })
-        generateBlurredMipmaps(renderer, { target: mipTarget, ...options })
+        generateBlurredMipmaps(renderer, { target: mipTarget, ...options, antiAliased })
         // bloom term only: composite with a black base
         material.uniforms.source.value = blackTexture
         material.uniforms.mipmapSource.value = mipTarget.texture
@@ -143,6 +145,54 @@ window.bloomShiftVariance = (method = 'pyramid') => {
     }, 256, 100, positions)
 }
 const blackTexture = floatTexture(new Float32Array(4), 1, 1)
+
+/**
+ * generateBlurredMipmaps with and without antiAliased on a smooth input (where the default chain does not alias):
+ * per level, max difference relative to that level's peak. Also returns whether the default chain is unchanged by
+ * the option existing (bit-identical to a second default run), and swizzle '.a' support
+ */
+window.antiAliasedMipsParity = () => {
+    const size = 256
+    const data = new Float32Array(size * size * 4)
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        const d2 = ((x - 128) ** 2 + (y - 120) ** 2) / (2 * 24 * 24)
+        data[(y * size + x) * 4] = 4 * Math.exp(-d2)
+        data[(y * size + x) * 4 + 3] = 2 * Math.exp(-d2)
+    }
+    const input = floatTexture(data, size, size)
+    const levels = (options) => {
+        const target = new WebGLRenderTarget(size, size, { type: FloatType, minFilter: LinearMipmapLinearFilter, magFilter: LinearFilter, depthBuffer: false })
+        initMipmapArray(target)
+        const copy = new CopyMaterial()
+        copy.uniforms.source.value = input
+        Rendering.shaderMaterialPass(renderer, { target, shader: copy, restoreGlobalState: true })
+        generateBlurredMipmaps(renderer, { target, blurKernel_heightFraction: 1 / 16, ...options })
+        const out = []
+        for (let level = 1; level <= 4; level++) {
+            const s = size >> level
+            const pixels = new Float32Array(s * s * 4)
+            renderer.setRenderTarget(target, 0, level)
+            gl.readPixels(0, 0, s, s, gl.RGBA, gl.FLOAT, pixels)
+            out.push(pixels)
+        }
+        renderer.setRenderTarget(null)
+        return out
+    }
+    const legacy = levels({}), legacyAgain = levels({}), antiAliased = levels({ antiAliased: true }), swizzled = levels({ antiAliased: true, swizzle: '.a' })
+    const errors = legacy.map((l, i) => {
+        let peak = 0, diff = 0
+        for (let j = 0; j < l.length; j += 4) { peak = Math.max(peak, l[j]); diff = Math.max(diff, Math.abs(l[j] - antiAliased[i][j])) }
+        return diff / peak
+    })
+    // '.a' → vec4(a): every channel holds the blurred alpha, half the red channel here
+    let swizzleError = 0
+    for (let j = 0; j < swizzled[0].length; j++) swizzleError = Math.max(swizzleError, Math.abs(swizzled[0][j] - antiAliased[0][j - (j % 4)] / 2))
+    return {
+        errors,
+        legacyDeterministic: legacy.every((l, i) => l.every((v, j) => v === legacyAgain[i][j])),
+        swizzleError: swizzleError / 2,
+    }
+}
 
 window.blurContract = () => {
     const width = 123, height = 77

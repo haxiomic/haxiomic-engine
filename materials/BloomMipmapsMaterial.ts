@@ -12,6 +12,10 @@ import { ShaderMaterial } from "./ShaderMaterial.js";
  * `generatePyramidBloomLegacy()` (the same bloom as the mip chain): computed without the mip chain's aliasing, so small
  * bright highlights do not shimmer as they move. Level weights and radii are then set by those functions, and
  * `mipmapSource`, `bloomFalloff`, `minLod` and `maxLod` are unused.
+ *
+ * With `generateBlurredMipmaps({ antiAliased: true })`, set `smoothLevels: 2` to also read the finest levels with a
+ * cubic B-spline instead of bilinear filtering: a bilinear read of a coarse level is not shift-invariant, which is the
+ * remaining shimmer once the levels themselves are alias-free.
  */
 export class BloomMipmapsMaterial extends ShaderMaterial<{
     source: Uniform<Texture | null>,
@@ -30,23 +34,57 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 }> {
 
     bakeUniforms: boolean;
+    readonly smoothLevels: number;
 
     constructor(options_?: {
         bakeUniforms?: boolean,
         /** Enable color grading (contrast, saturation, exponent adjustments) */
         colorGrading?: boolean,
+        /**
+         * Read the finest `smoothLevels` levels (from `minLod`) with a cubic B-spline (4 bilinear fetches each) instead
+         * of one bilinear fetch: smooth and shift-invariant. Meant for `generateBlurredMipmaps({ antiAliased: true })`.
+         * The B-spline blurs slightly more than bilinear (1/3 vs 1/6 texel² of the level). @default 0
+         */
+        smoothLevels?: number,
     }) {
         const defaultOptions = {
             bakeUniforms: true,
             colorGrading: false,
+            smoothLevels: 0,
         }
         let options = { ...defaultOptions, ...options_ };
+        const smoothLevels = Math.max(0, Math.floor(options.smoothLevels));
 
-        const dynamicBloomAccumulation = /*glsl*/`
+        const dynamicBloomAccumulation = (smoothLevels > 0 ? /*glsl*/`
+            for (float i = minLod; i < maxLod; i++) {
+                bloom += (i < minLod + ${smoothLevels.toFixed(1)} ? sampleLevelBSpline(mipmapSource, vUv, i) : textureLod(mipmapSource, vUv, i)) * pow(i, -bloomFalloff);
+            }` : /*glsl*/`
             for (float i = minLod; i < maxLod; i++) {
                 bloom += textureLod(mipmapSource, vUv, i) * pow(i, -bloomFalloff);
-            }`.replace(/\n/g, '\\\n');
-        
+            }`).replace(/\n/g, '\\\n');
+
+        const bsplineFunction = smoothLevels > 0 ? /*glsl*/`
+                // cubic B-spline read of one mip level with 4 bilinear fetches
+                vec4 sampleLevelBSpline(sampler2D tex, vec2 uv, float lod) {
+                    vec2 size = vec2(textureSize(tex, int(lod)));
+                    vec2 inv = 1.0 / size;
+                    vec2 tc = uv * size - 0.5;
+                    vec2 base = floor(tc);
+                    vec2 f = tc - base;
+                    vec2 f2 = f * f, f3 = f2 * f;
+                    vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+                    vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+                    vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+                    vec2 w3 = f3 / 6.0;
+                    vec2 g0 = w0 + w1, g1 = w2 + w3;
+                    vec2 h0 = (base - 0.5 + w1 / g0) * inv;
+                    vec2 h1 = (base + 1.5 + w3 / g1) * inv;
+                    return
+                        g0.y * (g0.x * textureLod(tex, vec2(h0.x, h0.y), lod) + g1.x * textureLod(tex, vec2(h1.x, h0.y), lod)) +
+                        g1.y * (g0.x * textureLod(tex, vec2(h0.x, h1.y), lod) + g1.x * textureLod(tex, vec2(h1.x, h1.y), lod));
+                }
+` : '';
+
         super({
             uniforms: {
                 source: new Uniform(null),
@@ -111,7 +149,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                     return c;
                 }
                 #endif
-
+${bsplineFunction}
                 varying vec2 vUv;
 
                 #include <common>
@@ -155,6 +193,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
         });
 
         this.bakeUniforms = options.bakeUniforms ?? true;
+        this.smoothLevels = smoothLevels;
 
         let definesState = {
             bakeUniforms: false,
@@ -201,6 +240,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                         minLod,
                         maxLod,
                         bloomFalloff: this.uniforms.bloomFalloff.value,
+                        smoothLevels,
                     });
                     this.defines.BLOOM_FALLOFF = this.uniforms.bloomFalloff.value.toFixed(3);
                     this.defines.MIN_LOD = minLod.toFixed(1);
@@ -238,13 +278,19 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
          * Required LINEAR_MIPMAP_LINEAR filtering for this to work
          */
         function getBloomAccumulationShaderOptimized(
-            { minLod, maxLod, bloomFalloff }: { minLod: number, maxLod: number, bloomFalloff: number }
+            { minLod, maxLod, bloomFalloff, smoothLevels }: { minLod: number, maxLod: number, bloomFalloff: number, smoothLevels: number }
         ): string {
             let glsl = '';
             const epsilon = 1e-6; // Small value to avoid log(0)/pow(0, negative)
 
-            // Loop over pairs of levels
+            // the finest smoothLevels levels: one B-spline read each
             let currentLod = minLod;
+            for (; currentLod < Math.min(minLod + smoothLevels, maxLod); currentLod++) {
+                const W = Math.pow(Math.max(currentLod, epsilon), -bloomFalloff);
+                glsl += /*glsl*/ `bloom += sampleLevelBSpline(mipmapSource, vUv, ${currentLod.toFixed(1)}) * ${W.toFixed(5)};\n`;
+            }
+
+            // Loop over pairs of levels
             for (; currentLod < maxLod - 1; currentLod += 2) {
                 const lod1 = currentLod;
                 const lod2 = currentLod + 1.0;
