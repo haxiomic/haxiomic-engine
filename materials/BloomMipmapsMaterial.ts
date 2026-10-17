@@ -18,7 +18,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
     /** Usually the same as source */
     mipmapSource: Uniform<Texture | null>,
     /** Precomputed bloom term from `generatePyramidBloom()` or `generatePyramidBloomLegacy()`, replaces the mipmap accumulation when set */
-    bloomSource: Uniform<Texture | null>,
+    bloomSource?: Uniform<Texture | null>,
     bloomStrength: Uniform<number>,
     bloomFalloff: Uniform<number>,
     minLod: Uniform<number>,
@@ -158,7 +158,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
         }
 
         this.onBeforeRender = () => {
-            const useBloomSource = this.uniforms.bloomSource.value != null ? 1 : 0;
+            const useBloomSource = this.uniforms.bloomSource?.value != null ? 1 : 0;
             if (this.defines.USE_BLOOM_SOURCE !== useBloomSource) {
                 this.defines.USE_BLOOM_SOURCE = useBloomSource;
                 this.needsUpdate = true;
