@@ -6,7 +6,7 @@
 { "imports": { "three": "/node_modules/three/build/three.module.js" } }
 </script>
 <script type="module">
-import { DataTexture, FloatType, LinearFilter, LinearMipmapLinearFilter, NoToneMapping, RGBAFormat, RepeatWrapping, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
+import { DataTexture, FloatType, LinearFilter, LinearMipmapLinearFilter, MirroredRepeatWrapping, NoToneMapping, RGBAFormat, RepeatWrapping, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
 import RenderTargetStore, { initMipmapArray } from '/dist/rendering/RenderTargetStore.js'
 import { gaussianBlur, separableGaussianBlur } from '/dist/rendering/GaussianBlur.js'
 import { sigmaFromKernel } from '/dist/rendering/PyramidGaussianBlur.js'
@@ -33,14 +33,20 @@ const read = (target) => {
     return out
 }
 
-/** exact separable Gaussian (float64, sampled kernel to 6σ, clamp-to-edge) of channel 0 */
-function referenceBlur(data, width, height, sigma) {
+/** exact separable Gaussian (float64, sampled kernel to 6σ) of channel 0, with 'clamp', 'repeat' or 'mirror' edges */
+function referenceBlur(data, width, height, sigma, edges = 'clamp') {
     const radius = Math.ceil(6 * sigma)
     const k = []
     let total = 0
     for (let i = -radius; i <= radius; i++) { const w = Math.exp(-i * i / (2 * sigma * sigma)); k.push(w); total += w }
     const tmp = new Float64Array(width * height), out = new Float64Array(width * height)
-    const clamp = (v, n) => v < 0 ? 0 : v >= n ? n - 1 : v
+    const wrapIndex = {
+        clamp: (v, n) => v < 0 ? 0 : v >= n ? n - 1 : v,
+        repeat: (v, n) => ((v % n) + n) % n,
+        // as MirroredRepeatWrapping: the edge texel is duplicated (-1 → 0)
+        mirror: (v, n) => { const m = ((v % (2 * n)) + 2 * n) % (2 * n); return m < n ? m : 2 * n - 1 - m },
+    }[edges]
+    const clamp = wrapIndex
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
         let s = 0
         for (let i = -radius; i <= radius; i++) s += data[(y * width + clamp(x + i, width)) * 4] * k[i + radius]
@@ -83,6 +89,27 @@ window.blurAccuracy = (legacy = false) => {
         let peak = 0, err = 0
         for (let i = 0; i < ref.length; i++) { peak = Math.max(peak, ref[i]); err = Math.max(err, Math.abs(out[i * 4] - ref[i])) }
         rows.push({ kernel, sigma, error: err / peak })
+    }
+    return rows
+}
+
+/** gaussianBlur with RepeatWrapping / MirroredRepeatWrapping vs an exact Gaussian with the same edges, on odd sizes */
+window.blurWrapAccuracy = () => {
+    const width = 257, height = 193
+    const data = testImage(width, height)
+    const texture = floatTexture(data, width, height)
+    const store = new RenderTargetStore()
+    const rows = []
+    for (const [wrap, edges] of [[RepeatWrapping, 'repeat'], [MirroredRepeatWrapping, 'mirror']]) {
+        // σ 2 (full resolution), 8, 32, and 128 (wider than half the image: wraps more than once)
+        for (const kernel of [9, 33, 129, 513]) {
+            const sigma = sigmaFromKernel(kernel, 0.5)
+            const out = read(gaussianBlur(renderer, store, texture, kernel, 0.5, wrap, null, `${edges}_${kernel}`))
+            const ref = referenceBlur(data, width, height, sigma, edges)
+            let peak = 0, err = 0
+            for (let i = 0; i < ref.length; i++) { peak = Math.max(peak, ref[i]); err = Math.max(err, Math.abs(out[i * 4] - ref[i])) }
+            rows.push({ edges, kernel, sigma, error: err / peak })
+        }
     }
     return rows
 }
@@ -205,11 +232,7 @@ window.blurContract = () => {
     const restored = renderer.getRenderTarget() === sentinel && renderer.getViewport(new Vector4()).equals(new Vector4(1, 2, 10, 12))
     const userTarget = new WebGLRenderTarget(width, height, { type: FloatType })
     const legacy = separableGaussianBlur(renderer, store, texture, 33, 0.5)
-    // non-clamp wrapping keeps the previous exact separable path
-    const repeat = read(gaussianBlur(renderer, store, texture, 33, 0.5, RepeatWrapping, null, 'repeat'))
-    const repeatLegacy = read(separableGaussianBlur(renderer, store, texture, 33, 0.5, RepeatWrapping, null, 'repeatLegacy'))
     return {
-        repeatWrapUsesSeparable: repeat.every((v, i) => v === repeatLegacy[i]),
         restored,
         sameSizeAsInput: result.width === width && result.height === height,
         sameTypeAsLegacy: result.texture.type === legacy.texture.type,

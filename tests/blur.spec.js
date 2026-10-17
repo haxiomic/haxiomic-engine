@@ -20,6 +20,11 @@ test.describe('gaussian blur & pyramid bloom', () => {
         }
     })
 
+    test('gaussianBlur repeat and mirror wrapping match an exact Gaussian', async ({ page }) => {
+        const rows = await page.evaluate(() => window.blurWrapAccuracy())
+        for (const r of rows) expect(r.error, `${r.edges} kernel ${r.kernel} (σ ${r.sigma})`).toBeLessThan(0.005)
+    })
+
     test('gaussianBlur is shift-invariant', async ({ page }) => {
         // deviation of a single pixel's blur as it moves, relative to peak. A box-filtered mip chain is ~10-20%
         expect(await page.evaluate(() => window.blurShiftVariance())).toBeLessThan(0.003)
@@ -27,7 +32,6 @@ test.describe('gaussian blur & pyramid bloom', () => {
 
     test('gaussianBlur keeps the drop-in contract', async ({ page }) => {
         expect(await page.evaluate(() => window.blurContract())).toEqual({
-            repeatWrapUsesSeparable: true,
             restored: true,
             sameSizeAsInput: true,
             sameTypeAsLegacy: true,
