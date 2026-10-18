@@ -1,0 +1,84 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Frame monitor fixture</title>
+<!--
+  PhysicallyBasedViewer in dev mode with a two-pass render: the scene into a target, then a full-screen copy to the canvas.
+  ?gpuLoad=N adds a full-screen pass that loops N times per pixel, to check the GPU time scales with GPU work.
+  Served by tests/serve.mjs; loads the built modules, so run `npm run build` first.
+-->
+<style>html, body { margin: 0; height: 100%; background: #000 } canvas { display: block; width: 100%; height: 100% }</style>
+<canvas id="canvas"></canvas>
+
+<script type="importmap">
+{ "imports": {
+    "three": "/node_modules/three/build/three.module.js",
+    "three/examples/jsm/": "/node_modules/three/examples/jsm/",
+    "@haxiomic/event-signal": "/node_modules/@haxiomic/event-signal/dist/esm/EventSignal.js",
+    "physics-animator": "/node_modules/physics-animator/dist/esm/index.js",
+    "physics-animator/animators": "/node_modules/physics-animator/dist/esm/animators/index.js"
+} }
+</script>
+<script type="module">
+import { BoxGeometry, Mesh, MeshBasicMaterial, ShaderMaterial, Uniform, Vector2, WebGLRenderTarget } from 'three'
+import { PhysicallyBasedViewer } from '/dist/PhysicallyBasedViewer.js'
+import { DevUI } from '/dist/dev/DevUI.js'
+import { Rendering } from '/dist/rendering/Rendering.js'
+
+const params = new URL(location.href).searchParams
+const gpuLoad = Number(params.get('gpuLoad') ?? 0)
+
+const viewer = new PhysicallyBasedViewer({ canvas: document.getElementById('canvas'), devMode: true, pixelRatio: 1 })
+
+// independent count to check the monitor against: renderer.info resets per render() call, so sum it after each one
+const frameCounts = { calls: 0, triangles: 0, renders: 0 }
+window.lastFrameCounts = null
+const render = viewer.renderer.render
+viewer.renderer.render = function (...args) {
+    render.apply(this, args)
+    frameCounts.calls += this.info.render.calls
+    frameCounts.triangles += this.info.render.triangles
+    frameCounts.renders++
+}
+viewer.events.frameUpdate.addListener(() => {
+    if (frameCounts.renders > 0) window.lastFrameCounts = { ...frameCounts }
+    frameCounts.calls = frameCounts.triangles = frameCounts.renders = 0
+})
+
+// 3 boxes and a full-screen copy, over 2 render calls
+for (let i = 0; i < 3; i++) {
+    const box = new Mesh(new BoxGeometry(0.2, 0.2, 0.2), new MeshBasicMaterial({ color: 0x3366ff }))
+    box.position.x = (i - 1) * 0.4
+    box.frustumCulled = false
+    viewer.scene.add(box)
+}
+viewer.camera.position.set(0, 0, 2)
+
+const target = new WebGLRenderTarget(1, 1)
+const copy = new ShaderMaterial({
+    uniforms: { source: new Uniform(target.texture), iterations: new Uniform(gpuLoad) },
+    vertexShader: `varying vec2 vUv; void main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader: `
+        uniform sampler2D source; uniform int iterations; varying vec2 vUv;
+        void main() {
+            vec4 c = texture2D(source, vUv);
+            float a = 0.0;
+            for (int i = 0; i < iterations; i++) a = fract(sin(a + vUv.x * float(i)) * 43758.5453);
+            gl_FragColor = c + a * 1e-6;
+        }`,
+    depthTest: false, depthWrite: false,
+})
+
+viewer.customRender = (renderer, options) => {
+    const { width, height } = renderer.getDrawingBufferSize(new Vector2())
+    if (target.width !== width || target.height !== height) target.setSize(width, height)
+    Rendering.renderPass(renderer, { ...options, target })
+    Rendering.shaderMaterialPass(renderer, { target: options.target, shader: copy, restoreGlobalState: true })
+}
+
+window.viewer = viewer
+window.DevUI = DevUI
+window.monitorText = () => Object.fromEntries(
+    [...document.querySelectorAll('.frame-monitor [data-field]')].map(el => [el.dataset.field, el.textContent])
+)
+window.ready = true
+</script>

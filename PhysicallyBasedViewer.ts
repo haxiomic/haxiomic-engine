@@ -5,6 +5,7 @@ import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 import { Console } from "./Console.js";
 import { DevUI } from "./dev/DevUI.js";
 import { EnvironmentProbes } from "./dev/EnvironmentProbes.js";
+import { FrameMonitor } from "./dev/FrameMonitor.js";
 import { TextureVisualizer } from "./dev/TextureVisualizer.js";
 import InteractionManager from "./interaction/InteractionManager.js";
 import { ThreeInteraction } from "./interaction/ThreeInteraction.js";
@@ -12,9 +13,7 @@ import { Layer } from "./rendering/Layer.js";
 import { Rendering } from "./rendering/Rendering.js";
 import RenderTargetStore from "./rendering/RenderTargetStore.js";
 import { ObjectUtils } from "./utils/ObjectUtils.js";
-// three js stats
 import { EventSignal } from "@haxiomic/event-signal";
-import Stats from 'three/examples/jsm/libs/stats.module.js';
 import { TransformGizmo } from "./dev/TransformGizmo.js";
 
 /**
@@ -127,7 +126,9 @@ export class PhysicallyBasedViewer<
 		root: Object3D,
 		textureVisualizer: TextureVisualizer,
 		grid: GridHelper,
-		stats: Stats,
+		frameMonitor: FrameMonitor,
+		/** @deprecated use `frameMonitor`, which has the same `update()` and `dom` */
+		stats: FrameMonitor,
 	} | null = null;
 
 	constructor(
@@ -330,6 +331,14 @@ export class PhysicallyBasedViewer<
 
 		// dev mode
 		if (this.devMode) {
+			// first, so it sits at the top of the panel. Without a DevUI panel it falls back to an overlay
+			const frameMonitorFolder = DevUI.disabled ? null : DevUI.ui.addFolder('Frame monitor');
+			const frameMonitor = frameMonitorFolder == null ? new FrameMonitor(renderer) : new FrameMonitor(renderer, {
+				container: frameMonitorFolder.$children,
+				isVisible: () => !frameMonitorFolder._closed && !frameMonitorFolder.root._hidden,
+			});
+			this.events.dispose.once(() => frameMonitor.dispose());
+
 			let renderingFolder = DevUI.addFolder('Rendering');
 			renderingFolder.close();
 			renderingFolder.add(this, 'pixelRatio', 0.1, 3, 0.1);
@@ -346,14 +355,9 @@ export class PhysicallyBasedViewer<
 				root: new Object3D(),
 				textureVisualizer: new TextureVisualizer(),
 				grid: new GridHelper(10, 100, 0x444444, 0x444444),
-				stats: new Stats(),
+				frameMonitor,
+				stats: frameMonitor,
 			}
-			document.body.appendChild(this.dev.stats.dom);
-			this.events.dispose.once(() => {
-				if (this.dev?.stats.dom) {
-					this.dev.stats.dom.remove();
-				}
-			});
 
 			let devRoot = this.dev.root;
 			this.scene.add(devRoot);
@@ -430,10 +434,12 @@ export class PhysicallyBasedViewer<
 					}
 				}
 
-				// s to toggle stats
+				// s to toggle the frame monitor
 				if (event.key === 's' && event.target === document.body) {
-					if (this.dev?.stats) {
-						this.dev.stats.dom.style.display = this.dev.stats.dom.style.display === 'none' ? 'block' : 'none';
+					if (frameMonitorFolder == null) {
+						frameMonitor.dom.hidden = !frameMonitor.dom.hidden;
+					} else {
+						frameMonitorFolder.open(frameMonitorFolder._closed);
 					}
 				}
 			});
@@ -462,7 +468,7 @@ export class PhysicallyBasedViewer<
 		this._lastRenderTime_ms = renderTime_ms;
 		let dt_s = dt_ms / 1000;
 
-		this.dev?.stats.update();
+		this.dev?.frameMonitor.update();
 
 		// Read sizing from the consumer-supplied canvas, not renderer.domElement.
 		// Identical in default mode (the renderer was constructed against this
