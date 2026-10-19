@@ -65,6 +65,18 @@ test.describe('gaussian blur & pyramid bloom', () => {
         expect(await page.evaluate(() => window.bloomResolutionIndependence())).toBeLessThan(0.01)
     })
 
+    test('pyramidBloom weights each channel separately', async ({ page }) => {
+        // a Vector4 weight per term is the same as one scalar-weighted run per channel
+        for (const [c, e] of (await page.evaluate(() => window.bloomChannelWeights())).entries()) expect(e, `channel ${c}`).toBeLessThan(1e-5)
+    })
+
+    test('pyramidBloom from a downsampled source matches the full image', async ({ page }) => {
+        const r = await page.evaluate(() => window.bloomSourceLevel())
+        expect(r.finestLevel).toBeGreaterThanOrEqual(1)
+        expect(r.coarseSize).toEqual([129, 97])
+        expect(r.error).toBeLessThan(1e-5)
+    })
+
     test('pyramidBloom with the mip bloom terms looks the same as the mipmap chain bloom', async ({ page }) => {
         // smooth input, where the mipmap chain does not alias: same σ per level and same weights
         expect(await page.evaluate(() => window.bloomParity())).toBeLessThan(0.03)

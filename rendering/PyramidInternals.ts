@@ -204,6 +204,22 @@ export const bsplineGLSL = /*glsl*/`
 	}
 `;
 
+/**
+ * The [1,3,3,1]/8 downsample of `DownsampleMaterial` ('binomial4', unpadded, clamped) as a GLSL function of the output
+ * fragment: the same four bilinear taps, in the same order
+ */
+export const binomialDownsampleGLSL = /*glsl*/`
+	vec4 binomialDownsample(sampler2D source, vec2 sourceInvSize) {
+		vec2 c = gl_FragCoord.xy * 2.0;
+		vec4 result = vec4(0.0);
+		result += textureLod(source, (c + vec2(-0.75, -0.75)) * sourceInvSize, 0.0) * 0.25;
+		result += textureLod(source, (c + vec2(0.75, -0.75)) * sourceInvSize, 0.0) * 0.25;
+		result += textureLod(source, (c + vec2(-0.75, 0.75)) * sourceInvSize, 0.0) * 0.25;
+		result += textureLod(source, (c + vec2(0.75, 0.75)) * sourceInvSize, 0.0) * 0.25;
+		return result;
+	}
+`;
+
 export class DownsampleMaterial extends ShaderMaterial<{
 	source: Uniform<Texture | null>,
 	sourceInvSize: Uniform<Vector2>,

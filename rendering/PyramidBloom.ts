@@ -1,12 +1,28 @@
-import { ClampToEdgeWrapping, LinearFilter, Texture, Uniform, Vector2, WebGLRenderTarget, WebGLRenderer } from "three";
+import { ClampToEdgeWrapping, LinearFilter, Texture, Uniform, Vector2, Vector4, WebGLRenderTarget, WebGLRenderer } from "three";
 import RenderTargetStore, { RenderTargetStoreOptions } from "./RenderTargetStore.js";
 import { Rendering } from "./Rendering.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 import { PyramidBorder } from "./PyramidGaussianBlur.js";
-import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, borderGLSL, bsplineGLSL, defaultCoreLinearSampling, downsampleVariance, fullscreenVertexShader, getTextureSize, snapshotRendererState } from "./PyramidInternals.js";
+import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, binomialDownsampleGLSL, borderGLSL, bsplineGLSL, defaultCoreLinearSampling, downsampleVariance, fullscreenVertexShader, getTextureSize, snapshotRendererState } from "./PyramidInternals.js";
 
-/** One Gaussian of a bloom: σ in pixels, and its weight in the sum */
-export type BloomTerm = { sigma: number, weight: number };
+/**
+ * One Gaussian of a bloom: σ in pixels, and its weight in the sum. A `Vector4` weights each channel (r, g, b, a)
+ * separately, so glows of different falloffs over the same σ share one pyramid (e.g. one per channel).
+ */
+export type BloomTerm = { sigma: number, weight: number | Vector4 };
+
+/**
+ * GLSL `vec4 sampleBSpline(sampler2D tex, vec2 p, vec2 invSize)`: cubic B-spline read at `p` in texel units (texel i
+ * centred at i + 0.5). Reads a `sourceLevel` result at full resolution: p = gl_FragCoord.xy / 2^sourceLevel
+ */
+export const sampleBSplineGLSL = bsplineGLSL;
+
+/**
+ * GLSL `vec4 binomialDownsample(sampler2D source, vec2 sourceInvSize)`: the pyramid's own [1,3,3,1] 2x downsample of
+ * `source` at this fragment (an output of half the source's size, rounded up). Builds a `sourceLevel` source, possibly
+ * combining several textures into one
+ */
+export { binomialDownsampleGLSL };
 
 export type PyramidBloomOptions = {
 	/**
@@ -35,16 +51,36 @@ export type PyramidBloomOptions = {
 	minCoreSigma?: MinCoreSigma,
 	/** Advanced, overrides `quality`. Truncation of the core Gaussians, in σ @default 5 */
 	coreTruncation?: number,
+	/**
+	 * The texture is this level of the image's pyramid: downsampled that many times by `binomialDownsampleGLSL`. Term σ
+	 * stay in pixels of the full image, and the result, at the texture's resolution, is the sum the full image would
+	 * give when read with `sampleBSplineGLSL` at p = gl_FragCoord.xy / 2^sourceLevel. Skips the full resolution passes,
+	 * and the source can combine several textures. Exact while no term plans finer than this level
+	 * (`pyramidBloomFinestLevel()`); a finer term runs at this level with a narrower core, or wider than asked.
+	 * Only with border 'clampPerLevel'. @default 0
+	 */
+	sourceLevel?: number,
 }
 
-/** Variance (in level-k texels²) added by k binomial downsamples and k cascaded 2x B-spline upsamples */
-function cascadeVariance(k: number) {
+/**
+ * Variance (in level-k texels²) added by k binomial downsamples, the cascaded 2x B-spline upsamples back to
+ * `sourceLevel`, and from a `sourceLevel` above 0 the caller's B-spline read at full resolution
+ */
+function cascadeVariance(k: number, sourceLevel = 0) {
 	let v = 0;
 	for (let j = 1; j <= k; j++) {
 		v += downsampleVariance.binomial4 * Math.pow(4, j - 1 - k);
-		v += (1 / 3) * Math.pow(4, j - k);
+		if (j >= sourceLevel) v += (1 / 3) * Math.pow(4, j - k);
 	}
 	return v;
+}
+
+function weightVector(weight: number | Vector4) {
+	return typeof weight === 'number' ? new Vector4(weight, weight, weight, weight) : weight;
+}
+
+function isZeroWeight(weight: number | Vector4) {
+	return typeof weight === 'number' ? weight === 0 : weight.x === 0 && weight.y === 0 && weight.z === 0 && weight.w === 0;
 }
 
 /** Maximum number of terms evaluated at the same pyramid level */
@@ -59,21 +95,30 @@ const qualityPresets: Record<BloomQuality, { minCoreSigma: MinCoreSigma, coreTru
 	balanced: { minCoreSigma: (_term, index) => index === 0 ? 1.5 : 2, coreTruncation: 4 },
 };
 
-function planPyramidBloom(terms: BloomTerm[], minCoreSigmaOption: MinCoreSigma = 3) {
-	const planned: { level: number, coreSigma: number, weight: number, sigma: number }[] = [];
+function planPyramidBloom(terms: BloomTerm[], minCoreSigmaOption: MinCoreSigma = 3, sourceLevel = 0) {
+	const planned: { level: number, coreSigma: number, weight: Vector4, sigma: number }[] = [];
 	const ordered = terms.slice().sort((a, b) => a.sigma - b.sigma);
 	for (const term of terms) {
-		if (term.weight === 0) continue;
+		if (isZeroWeight(term.weight)) continue;
 		const minCoreSigma = typeof minCoreSigmaOption === 'function' ? minCoreSigmaOption(term, ordered.indexOf(term)) : minCoreSigmaOption;
-		let level = Math.max(0, Math.floor(Math.log2(Math.max(term.sigma, 1e-6) / minCoreSigma)));
-		const coreVariance = (k: number) => Math.pow(term.sigma / Math.pow(2, k), 2) - cascadeVariance(k);
-		while (level > 0 && coreVariance(level) < minCoreSigma * minCoreSigma) level--;
+		let level = Math.max(sourceLevel, Math.floor(Math.log2(Math.max(term.sigma, 1e-6) / minCoreSigma)));
+		const coreVariance = (k: number) => Math.pow(term.sigma / Math.pow(2, k), 2) - cascadeVariance(k, sourceLevel);
+		while (level > sourceLevel && coreVariance(level) < minCoreSigma * minCoreSigma) level--;
 		if (planned.filter(p => p.level === level).length >= MAX_TERMS_PER_LEVEL) {
 			throw new Error(`pyramidBloom: more than ${MAX_TERMS_PER_LEVEL} terms at level ${level}`);
 		}
-		planned.push({ level, coreSigma: Math.sqrt(Math.max(coreVariance(level), 0)), weight: term.weight, sigma: term.sigma });
+		planned.push({ level, coreSigma: Math.sqrt(Math.max(coreVariance(level), 0)), weight: weightVector(term.weight), sigma: term.sigma });
 	}
 	return planned;
+}
+
+/**
+ * The finest pyramid level any of these terms runs at, as `pyramidBloom()` plans them with these options: the deepest
+ * `sourceLevel` that gives the same sum as the full resolution image (0 when a term needs full resolution)
+ */
+export function pyramidBloomFinestLevel(terms: BloomTerm[], options: Pick<PyramidBloomOptions, 'quality' | 'minCoreSigma'> = {}) {
+	const plan = planPyramidBloom(terms, options.minCoreSigma ?? qualityPresets[options.quality ?? 'high'].minCoreSigma);
+	return plan.length > 0 ? Math.min(...plan.map(p => p.level)) : 0;
 }
 
 /**
@@ -103,9 +148,15 @@ export function pyramidBloom(
 		wrapT: wrap,
 	}
 
+	const sourceLevel = options.sourceLevel ?? 0;
+	if (sourceLevel > 0 && border !== 'clampPerLevel') {
+		throw new Error(`pyramidBloom: sourceLevel needs border 'clampPerLevel'`);
+	}
 	const preset = qualityPresets[options.quality ?? 'high'];
 	const coreTruncation = options.coreTruncation ?? preset.coreTruncation;
-	const plan = planPyramidBloom(terms, options.minCoreSigma ?? preset.minCoreSigma);
+	// levels below from here on count from the source
+	const plan = planPyramidBloom(terms, options.minCoreSigma ?? preset.minCoreSigma, sourceLevel)
+		.map(p => ({ ...p, level: p.level - sourceLevel }));
 	const restoreState = options.restoreGlobalState !== false ? snapshotRendererState(renderer) : null;
 	const maxLevel = Math.max(0, ...plan.map(p => p.level));
 
@@ -137,13 +188,13 @@ export function pyramidBloom(
 		const levelTerms = plan.filter(p => p.level === k);
 		if (levelTerms.length === 0 && !accumulated) continue;
 
-		// x pass per term, y taps (pre-weighted) are applied in the cascade pass
+		// x pass per term, y taps and the term's weight are applied in the cascade pass
 		// ('normalize' at full resolution: read zero outside the image, which needs texel-centred taps)
 		const zeroOutside = normalize && k === 0;
 		const termTaps: Vector2[][] = [];
 		const termSources: Texture[] = [];
 		levelTerms.forEach((term, i) => {
-			const taps = GaussianTapsMaterial.computeTaps(term.coreSigma, coreTruncation, !zeroOutside && defaultCoreLinearSampling(k));
+			const taps = GaussianTapsMaterial.computeTaps(term.coreSigma, coreTruncation, !zeroOutside && defaultCoreLinearSampling(k + sourceLevel));
 			const tmp = renderTargetStore.getRenderTarget(`${cacheId}_bloom_x_${k}_${i}`, level.width, level.height, textureOptions);
 			const blurX = GaussianTapsMaterial.get(taps.length, 'x', { zeroOutside });
 			blurX.setTaps(taps);
@@ -152,7 +203,6 @@ export function pyramidBloom(
 			blurX.uniforms.sourceSize.value.set(level.width, level.height);
 			blurX.uniforms.direction.value.set(1, 0);
 			Rendering.shaderMaterialPass(renderer, { target: tmp, shader: blurX, restoreGlobalState: false });
-			for (const t of taps) t.y *= term.weight;
 			termTaps.push(taps);
 			termSources.push(tmp.texture);
 		});
@@ -164,6 +214,7 @@ export function pyramidBloom(
 		termSources.forEach((source, i) => {
 			shader.uniforms.sources.value[i] = source;
 			shader.uniforms.termSigma.value[i] = levelTerms[i].sigma;
+			shader.uniforms.termWeight.value[i].copy(levelTerms[i].weight);
 			shader.setTaps(i, termTaps[i]);
 		});
 		if (normalize) {
@@ -266,8 +317,8 @@ function renderBloom(renderer: WebGLRenderer, options: BloomOutputOptions, terms
 }
 
 /**
- * y-direction Gaussian taps (pre-weighted) for each term at this level + optional B-spline upsample of the coarser
- * accumulation
+ * y-direction Gaussian taps for each term at this level, times the term's weight per channel + optional B-spline
+ * upsample of the coarser accumulation
  */
 class CascadeMaterial extends ShaderMaterial<{
 	sources: Uniform<(Texture | null)[]>,
@@ -277,6 +328,8 @@ class CascadeMaterial extends ShaderMaterial<{
 	taps: Uniform<Vector2[]>,
 	/** σ of each term in source pixels, for normalize */
 	termSigma: Uniform<number[]>,
+	/** weight of each term per channel */
+	termWeight: Uniform<Vector4[]>,
 	normImageSize: Uniform<Vector2>,
 	/** source pixel position = gl_FragCoord.xy * normPxScale + normPxOffset */
 	normPxScale: Uniform<Vector2>,
@@ -317,8 +370,8 @@ class CascadeMaterial extends ShaderMaterial<{
 					: `term += textureLod(sources[${t}], (c + vec2(0.0, taps[${k}].x)) * sourceInvSize, 0.0) * taps[${k}].y;`);
 			}
 			termLoops.push(normalize
-				? `result += term / insideMaskBlur(px, normImageSize, termSigma[${t}]);`
-				: 'result += term;');
+				? `result += term / insideMaskBlur(px, normImageSize, termSigma[${t}]) * termWeight[${t}];`
+				: `result += term * termWeight[${t}];`);
 		}
 
 		super({
@@ -328,6 +381,7 @@ class CascadeMaterial extends ShaderMaterial<{
 				sourceSize: new Uniform(new Vector2()),
 				taps: new Uniform(new Array(Math.max(termCount * tapCount, 1)).fill(null).map(() => new Vector2())),
 				termSigma: new Uniform(new Array(Math.max(termCount, 1)).fill(1)),
+				termWeight: new Uniform(new Array(Math.max(termCount, 1)).fill(null).map(() => new Vector4(1, 1, 1, 1))),
 				normImageSize: new Uniform(new Vector2(1, 1)),
 				normPxScale: new Uniform(new Vector2(1, 1)),
 				normPxOffset: new Uniform(new Vector2()),
@@ -347,6 +401,7 @@ class CascadeMaterial extends ShaderMaterial<{
 				uniform sampler2D sources[TERM_COUNT];
 				uniform vec2 taps[TERM_COUNT * TAP_COUNT];
 				uniform float termSigma[TERM_COUNT];
+				uniform vec4 termWeight[TERM_COUNT];
 				#endif
 				uniform vec2 sourceInvSize;
 				uniform vec2 sourceSize;

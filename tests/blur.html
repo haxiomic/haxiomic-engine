@@ -6,11 +6,12 @@
 { "imports": { "three": "/node_modules/three/build/three.module.js" } }
 </script>
 <script type="module">
-import { DataTexture, FloatType, LinearFilter, LinearMipmapLinearFilter, MirroredRepeatWrapping, NoToneMapping, RGBAFormat, RepeatWrapping, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
+import { DataTexture, FloatType, LinearFilter, LinearMipmapLinearFilter, MirroredRepeatWrapping, NoToneMapping, RGBAFormat, RepeatWrapping, Vector2, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
 import RenderTargetStore, { initMipmapArray } from '/dist/rendering/RenderTargetStore.js'
 import { gaussianBlur, separableGaussianBlur } from '/dist/rendering/GaussianBlur.js'
 import { sigmaFromKernel } from '/dist/rendering/PyramidGaussianBlur.js'
-import { generatePyramidBloom, pyramidBloom } from '/dist/rendering/PyramidBloom.js'
+import { binomialDownsampleGLSL, generatePyramidBloom, pyramidBloom, pyramidBloomFinestLevel, sampleBSplineGLSL } from '/dist/rendering/PyramidBloom.js'
+import { ShaderMaterial } from '/dist/materials/ShaderMaterial.js'
 import Blur1D from '/dist/materials/Blur1D.js'
 import { mipmapCount } from '/dist/math/Math.js'
 import { generateBlurredMipmaps } from '/dist/rendering/BlurredMipmapChain.js'
@@ -339,6 +340,79 @@ window.bloomResolutionIndependence = () => {
         diff = Math.max(diff, Math.abs(v - l))
     }
     return diff / peak
+}
+
+/** testImage in red, and different content in green (gradient), blue (checker) and alpha (other bright points) */
+function fourChannelImage(width, height) {
+    const data = testImage(width, height)
+    let s = 7
+    const rand = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4
+        data[i + 1] = y / height
+        data[i + 2] = ((x >> 3) + (y >> 3)) & 1
+        data[i + 3] = 0
+    }
+    for (let n = 0; n < 30; n++) data[(Math.floor(rand() * height) * width + Math.floor(rand() * width)) * 4 + 3] += 100 + rand() * 900
+    return data
+}
+
+const bloomTerms = (weight) => [4, 8, 16, 32].map((sigma, i) => ({ sigma, weight: weight(i) }))
+
+/**
+ * pyramidBloom with a Vector4 weight per term against one scalar-weighted run per channel: max difference per channel,
+ * relative to that channel's peak
+ */
+window.bloomChannelWeights = () => {
+    const width = 257, height = 193
+    const texture = floatTexture(fourChannelImage(width, height), width, height)
+    const weights = [[1, 0.5, 0, 2], [0.5, 0.25, 1, 1], [0.25, 0.125, 0, 0.5], [0.125, 0, 0.5, 0.25]]
+    const options = { quality: 'balanced' }
+    const combined = read(pyramidBloom(renderer, new RenderTargetStore(), texture, bloomTerms(i => new Vector4(...weights[i])), options))
+    return [0, 1, 2, 3].map(c => {
+        const single = read(pyramidBloom(renderer, new RenderTargetStore(), texture, bloomTerms(i => weights[i][c]), options))
+        let peak = 0, diff = 0
+        for (let i = c; i < single.length; i += 4) { peak = Math.max(peak, Math.abs(single[i])); diff = Math.max(diff, Math.abs(single[i] - combined[i])) }
+        return diff / peak
+    })
+}
+
+/**
+ * pyramidBloom of a source downsampled once by binomialDownsampleGLSL (sourceLevel 1), read at full resolution with
+ * sampleBSplineGLSL, against pyramidBloom of the full image: max difference relative to peak, on odd sizes
+ */
+window.bloomSourceLevel = () => {
+    const width = 257, height = 193
+    const texture = floatTexture(fourChannelImage(width, height), width, height)
+    const terms = bloomTerms(i => (i + 1) ** -1.5)
+    const options = { quality: 'balanced' }
+    const finestLevel = pyramidBloomFinestLevel(terms, options)
+    const full = read(pyramidBloom(renderer, new RenderTargetStore(), texture, terms, options))
+
+    const half = new WebGLRenderTarget(Math.ceil(width / 2), Math.ceil(height / 2), { type: FloatType, minFilter: LinearFilter, magFilter: LinearFilter, depthBuffer: false })
+    const downsample = new ShaderMaterial({
+        uniforms: { source: { value: texture }, sourceInvSize: { value: new Vector2(1 / width, 1 / height) } },
+        vertexShader: 'void main() { gl_Position = vec4(position, 1.0); }',
+        fragmentShader: `uniform sampler2D source; uniform vec2 sourceInvSize;
+            ${binomialDownsampleGLSL}
+            void main() { gl_FragColor = binomialDownsample(source, sourceInvSize); }`,
+    })
+    Rendering.shaderMaterialPass(renderer, { target: half, shader: downsample, restoreGlobalState: true })
+    const coarse = pyramidBloom(renderer, new RenderTargetStore(), half.texture, terms, { ...options, sourceLevel: 1 })
+
+    const out = new WebGLRenderTarget(width, height, { type: FloatType, depthBuffer: false })
+    const reconstruct = new ShaderMaterial({
+        uniforms: { source: { value: coarse.texture }, invSize: { value: new Vector2(1 / coarse.width, 1 / coarse.height) } },
+        vertexShader: 'void main() { gl_Position = vec4(position, 1.0); }',
+        fragmentShader: `uniform sampler2D source; uniform vec2 invSize;
+            ${sampleBSplineGLSL}
+            void main() { gl_FragColor = sampleBSpline(source, gl_FragCoord.xy * 0.5, invSize); }`,
+    })
+    Rendering.shaderMaterialPass(renderer, { target: out, shader: reconstruct, restoreGlobalState: true })
+    const result = read(out)
+    let peak = 0, diff = 0
+    for (let i = 0; i < full.length; i++) { peak = Math.max(peak, Math.abs(full[i])); diff = Math.max(diff, Math.abs(full[i] - result[i])) }
+    return { finestLevel, coarseSize: [coarse.width, coarse.height], error: diff / peak }
 }
 
 window.ready = gl.getExtension('EXT_color_buffer_float') != null && gl.getExtension('OES_texture_float_linear') != null ? true : 'unsupported'
