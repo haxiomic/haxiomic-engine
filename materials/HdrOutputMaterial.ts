@@ -13,7 +13,8 @@ export type HdrOutputMaterialOptions = {
     /**
      * The source holds premultiplied alpha, as three's render targets do: the curve and encoding apply to
      * un-premultiplied colour, premultiplied again after. Opaque pixels and pixels with alpha 0 are unaffected.
-     * `false` transforms the stored colour as it is. Construction only. @default true
+     * `false` transforms the stored colour as it is, as does `material.premultipliedAlpha = true` (three then
+     * premultiplies the output). Construction only. @default true
      */
     premultipliedSource?: boolean;
 };
@@ -65,7 +66,7 @@ export class HdrOutputMaterial extends ShaderMaterial<{
                 ${premultipliedAlphaGlsl}
                 void main() {
                     vec4 pixel = texture2D(source, vUv);
-                    #if PREMULTIPLIED_SOURCE
+                    #if PREMULTIPLIED_SOURCE && !defined( PREMULTIPLIED_ALPHA )
                     vec3 linear = unpremultiplyColor(pixel) * exposure;
                     #else
                     vec3 linear = pixel.rgb * exposure;
@@ -74,7 +75,7 @@ export class HdrOutputMaterial extends ShaderMaterial<{
                         ? hdrNeutralToneMapping(linear, headroom)
                         : hdrAcesToneMapping(linear, headroom);
                     vec3 encoded = hdrLinearToSrgb(mapped);
-                    #if PREMULTIPLIED_SOURCE
+                    #if PREMULTIPLIED_SOURCE && !defined( PREMULTIPLIED_ALPHA )
                     encoded = premultiplyColor(encoded, pixel);
                     #endif
                     gl_FragColor = vec4(encoded, pixel.a);

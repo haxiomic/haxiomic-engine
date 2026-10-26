@@ -9,8 +9,8 @@ import { RGBASwizzle } from "./Swizzle.js";
  *
  * Applies the renderer's tone mapping and output colour space when the pass has them. With
  * `{ premultipliedSource: true }` they apply to un-premultiplied colour, premultiplied again after, for a source
- * that holds premultiplied alpha; opaque pixels and pixels with alpha 0 are unaffected. Off by default: the copy
- * then transforms the stored values as they are.
+ * that holds premultiplied alpha; opaque pixels and pixels with alpha 0 are unaffected. Coverage is read after the
+ * swizzle. Off by default: the copy then transforms the stored values as they are.
  */
 export class CopyMaterial extends ShaderMaterial<
 	{
@@ -56,7 +56,7 @@ ${premultipliedAlphaGlsl}
 				void main() {
 					gl_FragColor = textureLod(source, vUv, sourceMipmapLevel)SWIZZLE;
 
-					#ifdef PREMULTIPLIED_SOURCE
+					#if defined( PREMULTIPLIED_SOURCE ) && !defined( PREMULTIPLIED_ALPHA )
 					vec4 premultiplied = gl_FragColor;
 					gl_FragColor.rgb = unpremultiplyColor(premultiplied);
 					#endif
@@ -64,7 +64,7 @@ ${premultipliedAlphaGlsl}
 					#include <tonemapping_fragment>
 					#include <colorspace_fragment>
 
-					#ifdef PREMULTIPLIED_SOURCE
+					#if defined( PREMULTIPLIED_SOURCE ) && !defined( PREMULTIPLIED_ALPHA )
 					gl_FragColor.rgb = premultiplyColor(gl_FragColor.rgb, premultiplied);
 					#endif
 				}

@@ -53,6 +53,21 @@ test.describe('display transform of premultiplied colour', () => {
         expect(await page.evaluate(() => window.zeroAlphaUnchanged())).toBe(0)
     })
 
+    test('bloom is added light: a glow over translucent pixels keeps its brightness', async ({ page }) => {
+        const ratios = await page.evaluate(() => window.glowOverTranslucent())
+        expect(ratios.length, 'cells lit by the glow').toBeGreaterThan(0)
+        // taking coverage from the bloomed alpha would leave a few percent of the glow
+        for (const r of ratios) expect(r).toBeGreaterThan(0.8)
+    })
+
+    test('a bright colour at a tiny alpha stays finite', async ({ page }) => {
+        expect(await page.evaluate(() => window.finiteAtTinyAlpha())).toBe(true)
+    })
+
+    test('with material.premultipliedAlpha, the stored colour is transformed as it is', async ({ page }) => {
+        expect(await page.evaluate(() => window.premultipliedAlphaMaterialUnchanged())).toBe(0)
+    })
+
     test('a flat colour at 50% coverage presents encode(T(c)) · 0.5', async ({ page }) => {
         const c = [0.2, 0.5, 0.8]
         for (const toneMapping of ['none', 'aces']) {

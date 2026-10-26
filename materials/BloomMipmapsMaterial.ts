@@ -1,6 +1,6 @@
 import { Texture, Uniform } from "three";
 import { bloomAccumulationDynamicStatements, bloomAccumulationStatements, bloomBSplineGlsl, bloomLodRange } from "../rendering/BloomAccumulation.js";
-import { premultipliedAlphaGlsl } from "../rendering/DisplayTransform.js";
+import { displayTransformGlsl } from "../rendering/DisplayTransform.js";
 import { ShaderMaterial } from "./ShaderMaterial.js";
 
 /**
@@ -14,9 +14,11 @@ import { ShaderMaterial } from "./ShaderMaterial.js";
  * `mipmapSource`, `bloomFalloff`, `minLod` and `maxLod` are then unused.
  *
  * The source is taken as premultiplied (what three renders into a target), so tone mapping, the output encoding and
- * the colour grade apply to un-premultiplied colour, which is premultiplied again after. Opaque pixels come out as
- * they would without this; partially transparent ones keep their colour instead of brightening. Pass
- * `premultipliedSource: false` to transform the stored colour as it is. The accumulation is also available as GLSL to
+ * the colour grade apply to un-premultiplied colour, which is premultiplied again after, and the bloom is light added
+ * over the whole pixel, so a glow over a transparent area stays visible. Pixels whose source alpha is 0 or at least 1
+ * come out as they would without this; partially transparent ones keep their colour instead of brightening. Pass
+ * `premultipliedSource: false` to transform the stored colour as it is. With `material.premultipliedAlpha = true`
+ * three premultiplies the output itself, and the stored colour is transformed as it is. The accumulation is also available as GLSL to
  * compose: see `bloomAccumulationGlsl()`.
  */
 export class BloomMipmapsMaterial extends ShaderMaterial<{
@@ -52,8 +54,9 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
         smoothLevels?: number,
         /**
          * The source holds premultiplied alpha, as three's render targets do: tone mapping, the output encoding and
-         * the colour grade apply to un-premultiplied colour, premultiplied again after. Opaque pixels and pixels with
-         * alpha 0 are unaffected. `false` transforms the stored colour as it is. @default true
+         * the colour grade apply to un-premultiplied colour, premultiplied again after, with the bloom as added light.
+         * Pixels whose source alpha is 0 or at least 1 are unaffected. `false` transforms the stored colour as it is.
+         * @default true
          */
         premultipliedSource?: boolean,
     }) {
@@ -134,7 +137,11 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                 }
                 #endif
 ${smoothLevels > 0 ? bloomBSplineGlsl : ''}
-${premultipliedAlphaGlsl}
+                #if COLOR_GRADING
+                #define DISPLAY_COLOR_GRADE
+                vec3 displayColorGrade(vec3 c) { return applyColorGrading(c); }
+                #endif
+${displayTransformGlsl}
                 varying vec2 vUv;
 
                 #include <common>
@@ -162,22 +169,21 @@ ${premultipliedAlphaGlsl}
 
                     gl_FragColor = lod0 + bloom * bloomStrength;
 
-                    #if PREMULTIPLIED_SOURCE
-                    // transform the colour, not the colour scaled by its coverage
-                    vec4 premultiplied = gl_FragColor;
-                    gl_FragColor.rgb = unpremultiplyColor(premultiplied);
+                    #if PREMULTIPLIED_SOURCE && !defined( PREMULTIPLIED_ALPHA )
+                    // a partially covered source: transform its colour, not the colour scaled by its coverage, and
+                    // add the bloom as light over the whole pixel (displayTransformEmissive)
+                    if (lod0.a > 0.0 && lod0.a < 1.0) {
+                        gl_FragColor.rgb = displayTransformEmissive(lod0, bloom.rgb * bloomStrength).rgb;
+                    } else
                     #endif
+                    {
+                        #include <tonemapping_fragment>
+                        #include <colorspace_fragment>
 
-                    #include <tonemapping_fragment>
-                    #include <colorspace_fragment>
-
-                    #if COLOR_GRADING
-                    gl_FragColor.rgb = applyColorGrading(gl_FragColor.rgb);
-                    #endif
-
-                    #if PREMULTIPLIED_SOURCE
-                    gl_FragColor.rgb = premultiplyColor(gl_FragColor.rgb, premultiplied);
-                    #endif
+                        #if COLOR_GRADING
+                        gl_FragColor.rgb = applyColorGrading(gl_FragColor.rgb);
+                        #endif
+                    }
 
                     #include <premultiplied_alpha_fragment>
                     #include <dithering_fragment>

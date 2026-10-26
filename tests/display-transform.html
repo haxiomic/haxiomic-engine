@@ -143,6 +143,34 @@ window.floatPathTransforms = () => {
     }
 }
 
+/**
+ * Bloom is light over the whole pixel: a glow from a bright opaque cell over faint translucent cells (alpha 0.05)
+ * keeps its brightness. Returns, per translucent cell, the ratio of the luminance to the stored-colour transform's
+ * (which shows the glow at full strength), on the canvas
+ */
+window.glowOverTranslucent = () => {
+    const values = [[20, 20, 20, 1], ...Array(15).fill([0.005, 0.004, 0.003, 0.05])]
+    const fixed = bloomMaterial({}, values, { strength: 0.3 })
+    const asStored = bloomMaterial({ premultipliedSource: false }, values, { strength: 0.3 })
+    const a = cellValues(runCanvas(fixed, 'aces'), 16), b = cellValues(runCanvas(asStored, 'aces'), 16)
+    const luma = p => p[0] + p[1] + p[2]
+    return a.slice(1).map((p, i) => luma(b[i + 1]) > 6 ? luma(p) / luma(b[i + 1]) : null).filter(r => r !== null)
+}
+
+/** A bright colour at a tiny alpha stays finite through the transform (no overflow to infinity or NaN) */
+window.finiteAtTinyAlpha = () => {
+    const values = [[100, 50, 25, 1e-6], [60000, 1, 1, 0.001], [1e30, 0, 0, 1e-20]]
+    const out = runFloat(bloomMaterial({}, values, { strength: 0 }), 'aces')
+    return cellValues(out, 3).every(p => p.every(Number.isFinite))
+}
+
+/** With material.premultipliedAlpha (three premultiplies the output), the stored colour is transformed as it is */
+window.premultipliedAlphaMaterialUnchanged = () => {
+    const values = [...OPAQUE, [0.1, 0.25, 0.4, 0.5], [0.02, 0.01, 0.3, 0.3], [0.3, 0.6, 0.9, 0]]
+    const make = premultipliedSource => { const m = bloomMaterial({ premultipliedSource }, values, { strength: 0.25 }); m.premultipliedAlpha = true; m.transparent = true; return m }
+    return bitDifferences(runFloat(make(true), 'aces'), runFloat(make(false), 'aces')).length
+}
+
 /** Pixels with alpha 0 (light without coverage, or data with an unused alpha) are transformed as stored */
 window.zeroAlphaUnchanged = () => {
     const values = [[0.3, 0.6, 0.9, 0], [4, 0, 0, 0], [0, 0, 0, 0]]
