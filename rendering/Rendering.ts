@@ -390,6 +390,12 @@ export namespace Rendering {
 		applyOutputColorSpace?: boolean,
 		toneMapping?: ToneMapping,
 		toneMappingExposure?: number,
+		/**
+		 * With `applyOutputColorSpace` or `toneMapping`: the source holds premultiplied alpha, so the transform applies to
+		 * un-premultiplied colour, premultiplied again after. Opaque pixels and pixels with alpha 0 are unaffected. Has no
+		 * effect on a plain copy. Default false
+		 */
+		premultipliedSource?: boolean,
 		targetMipmapLevel?: number,
 		targetCubeFace?: number,
 		viewport?: Vector4,
@@ -411,10 +417,12 @@ export namespace Rendering {
 		let shader: Material;
 
 		if (colorTransformRequired) {
-			let copyMaterial = copyMaterials[swizzle];
+			const premultipliedSource = options.premultipliedSource === true;
+			const key = premultipliedSource ? `${swizzle}:premultiplied` : swizzle;
+			let copyMaterial = copyMaterials[key];
 			if (copyMaterial == null) {
-				copyMaterial = new CopyMaterial(swizzle);
-				copyMaterials[swizzle] = copyMaterial;
+				copyMaterial = new CopyMaterial(swizzle, { premultipliedSource });
+				copyMaterials[key] = copyMaterial;
 			}
 			copyMaterial.uniforms.source.value = options.source;
 			copyMaterial.uniforms.sourceMipmapLevel.value = options.sourceMipmapLevel ?? 0;
