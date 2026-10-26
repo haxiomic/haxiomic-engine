@@ -1,4 +1,5 @@
 import { ACESFilmicToneMapping, DoubleSide, NeutralToneMapping, Texture, Uniform } from 'three';
+import { premultipliedAlphaGlsl } from '../rendering/DisplayTransform.js';
 import { hdrToneMappingGlsl } from '../rendering/HdrToneMapping.js';
 import { ShaderMaterial } from './ShaderMaterial.js';
 
@@ -9,6 +10,12 @@ export type HdrOutputMaterialOptions = {
     toneMapping?: HdrToneMapping;
     exposure?: number;
     headroom?: number;
+    /**
+     * The source holds premultiplied alpha, as three's render targets do: the curve and encoding apply to
+     * un-premultiplied colour, premultiplied again after. Opaque pixels and pixels with alpha 0 are unaffected.
+     * `false` transforms the stored colour as it is. Construction only. @default true
+     */
+    premultipliedSource?: boolean;
 };
 
 /**
@@ -18,6 +25,7 @@ export type HdrOutputMaterialOptions = {
  * Use only with an sRGB canvas. At headroom 1 the curves match SDR ACES/Neutral.
  * Shader source stays fixed as settings change. Clone/copy use three's normal
  * uniform semantics; rebind render-target textures after cloning.
+ * Partially transparent pixels are transformed un-premultiplied (see `premultipliedSource`).
  */
 export class HdrOutputMaterial extends ShaderMaterial<{
     source: Uniform<Texture | null>;
@@ -25,13 +33,20 @@ export class HdrOutputMaterial extends ShaderMaterial<{
     headroom: Uniform<number>;
     toneCurve: Uniform<number>;
 }> {
+    /** Whether the curve and encoding apply to un-premultiplied colour (constructor option) */
+    get premultipliedSource(): boolean { return this.defines.PREMULTIPLIED_SOURCE === 1; }
+
     constructor(options: HdrOutputMaterialOptions = {}) {
+        const premultipliedSource = options.premultipliedSource ?? true;
         super({
             uniforms: {
                 source: new Uniform<Texture | null>(options.source ?? null),
                 exposure: new Uniform(1),
                 headroom: new Uniform(1),
                 toneCurve: new Uniform(0),
+            },
+            defines: {
+                PREMULTIPLIED_SOURCE: premultipliedSource ? 1 : 0,
             },
             vertexShader: /* glsl */`
                 varying vec2 vUv;
@@ -47,13 +62,22 @@ export class HdrOutputMaterial extends ShaderMaterial<{
                 uniform int toneCurve;
                 varying vec2 vUv;
                 ${hdrToneMappingGlsl}
+                ${premultipliedAlphaGlsl}
                 void main() {
                     vec4 pixel = texture2D(source, vUv);
+                    #if PREMULTIPLIED_SOURCE
+                    vec3 linear = unpremultiplyColor(pixel) * exposure;
+                    #else
                     vec3 linear = pixel.rgb * exposure;
+                    #endif
                     vec3 mapped = toneCurve == 1
                         ? hdrNeutralToneMapping(linear, headroom)
                         : hdrAcesToneMapping(linear, headroom);
-                    gl_FragColor = vec4(hdrLinearToSrgb(mapped), pixel.a);
+                    vec3 encoded = hdrLinearToSrgb(mapped);
+                    #if PREMULTIPLIED_SOURCE
+                    encoded = premultiplyColor(encoded, pixel);
+                    #endif
+                    gl_FragColor = vec4(encoded, pixel.a);
                 }
             `,
             toneMapped: false,
