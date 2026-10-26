@@ -40,3 +40,9 @@ Opt-in HDR canvas presentation and final-pass tone mapping are available through
 `rendering/HdrOutput`, `materials/HdrOutputMaterial`, and the pure GLSL functions in
 `rendering/HdrToneMapping`. See [HDR output](docs/hdr-output.md)
 for integration, the experimental macOS compositor workaround, and the demo.
+
+**Display transform and bloom chunks**
+
+`rendering/DisplayTransform` exports GLSL to present premultiplied linear colour correctly (un-premultiply, tone map,
+encode, premultiply), and `rendering/BloomAccumulation` exports the mip chain bloom as GLSL. `BloomMipmapsMaterial` and
+`HdrOutputMaterial` transform un-premultiplied colour. See [Display transform](docs/display-transform.md).
