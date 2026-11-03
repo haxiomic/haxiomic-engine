@@ -21,10 +21,12 @@ renderer.setPixelRatio(1)
 renderer.setSize(SIZE, SIZE, false)
 
 /**
- * A pass over a scene of two meshes with a colour background, keeping the colour, onto a target with a viewport of
- * its own, restoring global state. `override`: 'perObject' (a function) or 'global' (a material). `throwAt`: where it
- * throws: reading the pass's viewport (before anything is overridden), the per-object override on the second mesh,
- * reading the pass's layers (after the overrides) or inside render(). Returns what differs from before the pass
+ * A pass onto a target with a viewport of its own, restoring global state. `override`: 'perObject' (a function) or
+ * 'global' (a material), over a scene of two meshes with a colour background, keeping the colour; or 'meshGlobal', a
+ * material over one of the meshes passed as the scene, as `shaderMaterialPass` does, clearing with a colour.
+ * `throwAt`: where it throws: reading the pass's viewport (before anything is overridden), the per-object override on
+ * the second mesh, reading the pass's layers (after the overrides) or inside render(). Returns what differs from
+ * before the pass
  */
 window.throwing = (override, throwAt) => {
     const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1)
@@ -67,13 +69,14 @@ window.throwing = (override, throwAt) => {
 
     const fail = (where) => { throw new Error(`throws at ${where}`) }
     let n = 0
+    const meshScene = override === 'meshGlobal'
     const options = {
-        target, scene, camera,
+        target, scene: meshScene ? meshes[0] : scene, camera,
         viewport: throwAt === 'viewport' ? { get x() { return fail('viewport') }, y: 0, z: 8, w: 8 } : new Vector4(0, 0, 8, 8),
         layers: throwAt === 'layers' ? { get mask() { return fail('layers') } } : new Layers(),
-        overrideMaterial: override === 'global' ? new MeshBasicMaterial()
-            : () => (n++ === 1 && throwAt === 'override') ? fail('override') : new MeshBasicMaterial(),
-        clearColor: false, clearDepth: true,
+        overrideMaterial: override === 'perObject' ? () => (n++ === 1 && throwAt === 'override') ? fail('override') : new MeshBasicMaterial()
+            : new MeshBasicMaterial(),
+        clearColor: meshScene ? { rgb: 0xff00ff, alpha: 1 } : false, clearDepth: true,
         restoreGlobalState: true,
     }
     if (throwAt === 'render') meshes[0].onBeforeRender = () => fail('render')

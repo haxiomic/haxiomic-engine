@@ -123,7 +123,7 @@ export namespace Rendering {
 	/**
 	 * Renders `scene` into `target`, as the options say. This should be used instead of `renderer.render()`
 	 *
-	 * What it changes on the renderer for the call (`autoClear` and its buffers, tone mapping, the camera's layers,
+	 * What it changes on the renderer for the call (`autoClear`, tone mapping, the camera's layers,
 	 * override materials) is put back after; the render target, viewport and clear colour only with `restoreGlobalState`.
 	 * This holds when something in the pass throws, too, such as an override material function or a hook in `render()`
 	 */

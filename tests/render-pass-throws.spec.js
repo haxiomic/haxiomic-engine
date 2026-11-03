@@ -15,6 +15,7 @@ test.afterEach(() => expect(errors).toEqual([]))
 const CASES = {
     perObject: ['viewport', 'override', 'layers', 'render'],
     global: ['viewport', 'layers', 'render'],
+    meshGlobal: ['viewport', 'layers', 'render'],
 }
 for (const [override, throwAts] of Object.entries(CASES)) for (const throwAt of throwAts) {
     test(`a ${override} override material, a throw at the ${throwAt}: everything is put back`, async ({ page }) => {
