@@ -119,3 +119,8 @@ test('a per-object override inside another on the same objects puts back the out
         after: ['original', 'original'],
     })
 })
+
+test('an object the override function moves later in the scene, so it is overridden twice, gets its own material back', async ({ page }) => {
+    // put back last first: first to last, the first override was the last written
+    expect(await page.evaluate(() => window.cases.overrideVisitedTwice())).toEqual({ visitedTwice: true, restored: [true, true] })
+})

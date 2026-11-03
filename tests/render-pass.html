@@ -361,6 +361,26 @@ window.cases = {
         pass(outer)
         return { during, afterInner, after: which() }
     },
+
+    /**
+     * A per-object override function that moves the first mesh to the end of the scene, so the traverse visits it
+     * twice and overrides it twice: whether each mesh has its own material back after the pass
+     */
+    overrideVisitedTwice() {
+        const meshes = [fill([1, 1, 1, 1]), fill([1, 1, 1, 1])]
+        const originals = meshes.map(m => m.material)
+        const scene = new Scene()
+        scene.add(...meshes)
+        let moved = false
+        Rendering.renderPass(renderer, {
+            target: target(), scene, camera: ortho, clearColor: false, clearDepth: false, restoreGlobalState: true,
+            overrideMaterial: (obj) => {
+                if (obj === meshes[0] && !moved) { moved = true; scene.add(obj) }
+                return obj.material.clone()
+            },
+        })
+        return { visitedTwice: moved && scene.children[1] === meshes[0], restored: meshes.map((m, i) => m.material === originals[i]) }
+    },
 }
 window.ready = true
 </script>

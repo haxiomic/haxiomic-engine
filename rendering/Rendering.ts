@@ -313,8 +313,11 @@ export namespace Rendering {
 			if (_overriddenObjects !== undefined) {
 				// Restore from the recorded list, not a fresh traverse: the
 				// scene may have changed during render, and only these exact
-				// objects were swapped.
-				for (const [obj, originalMaterial] of _overriddenObjects) {
+				// objects were swapped. Last first, so that an object recorded
+				// twice (moved later in the scene by the override function) ends
+				// on the material it had before the pass.
+				for (let i = _overriddenObjects.length - 1; i >= 0; i--) {
+					const [obj, originalMaterial] = _overriddenObjects[i];
 					obj.material = originalMaterial;
 				}
 			}

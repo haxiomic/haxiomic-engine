@@ -62,8 +62,6 @@ window.throwing = (override, throwAt) => {
         background: scene.background === background,
         sceneOverrideMaterial: scene.overrideMaterial === sceneOverride,
         meshMaterials: meshes.map((m, i) => m.material === originals[i]),
-        // what renderPass keeps on an object while it's overridden
-        leftOnMeshes: meshes.map(m => Object.getOwnPropertySymbols(m).filter(s => m[s] !== undefined).length),
     })
     const before = state()
 
