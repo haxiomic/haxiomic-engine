@@ -2,7 +2,7 @@ import { ClampToEdgeWrapping, LinearFilter, MirroredRepeatWrapping, RepeatWrappi
 import RenderTargetStore, { RenderTargetStoreOptions } from "./RenderTargetStore.js";
 import Blur1D from "../materials/Blur1D.js";
 import { Rendering } from "./Rendering.js";
-import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, UpsampleMaterial, WrapMode, defaultCoreLinearSampling, getTextureSize, planPyramidBlur, snapshotRendererState } from "./PyramidInternals.js";
+import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, UpsampleMaterial, WrapMode, defaultCoreLinearSampling, getTextureSize, planPyramidBlur } from "./PyramidInternals.js";
 
 /**
  * How the blur treats pixels beyond the image edge, with `ClampToEdgeWrapping`:
@@ -68,7 +68,7 @@ export function pyramidGaussianBlur(
 	}
 
 	const plan = planPyramidBlur(sigma, { minCoreSigma: options.minCoreSigma });
-	const restoreState = options.restoreGlobalState !== false ? snapshotRendererState(renderer) : null;
+	const savedState = options.restoreGlobalState !== false ? Rendering.saveGlobalState(renderer) : null;
 
 	const clamp = wrapMode === 'clamp';
 	const normalize = clamp && options.border === 'normalize';
@@ -170,7 +170,7 @@ export function pyramidGaussianBlur(
 		Rendering.shaderMaterialPass(renderer, { target: finalTarget, shader: upsample, restoreGlobalState: false });
 	}
 
-	restoreState?.();
+	if (savedState) Rendering.restoreGlobalState(renderer, savedState);
 	return finalTarget;
 }
 

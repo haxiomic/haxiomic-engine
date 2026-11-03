@@ -8,8 +8,12 @@
 { "imports": { "three": "/node_modules/three/build/three.module.js" } }
 </script>
 <script type="module">
-import { BoxGeometry, Color, DataTexture, DirectionalLight, Mesh, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Scene, ShaderMaterial, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
+import { BoxGeometry, Color, DataTexture, DirectionalLight, LinearMipmapLinearFilter, Mesh, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Scene, ShaderMaterial, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
 import { Rendering } from '/dist/rendering/Rendering.js'
+import RenderTargetStore from '/dist/rendering/RenderTargetStore.js'
+import { generateBlurredMipmaps } from '/dist/rendering/BlurredMipmapChain.js'
+import { gaussianBlur } from '/dist/rendering/GaussianBlur.js'
+import { pyramidBloom } from '/dist/rendering/PyramidBloom.js'
 
 /* Rendering.renderPass and its helpers, as their options say: each case into a 64² target filled with junk first */
 
@@ -61,6 +65,23 @@ function litScene(shadows) {
     return { scene, camera }
 }
 
+/** the state saveGlobalState() records, as a known starting point: the canvas, viewport (1, 2, 3, 4), clear colour 00ff00 at 0.5 */
+function setKnownState() {
+    renderer.setRenderTarget(null)
+    renderer.setViewport(1, 2, 3, 4)
+    renderer.setClearColor(0x00ff00, 0.5)
+}
+/** what the renderer is left with, named: the canvas is null */
+function globalState(names = new Map()) {
+    const target = renderer.getRenderTarget()
+    return {
+        target: target === null ? null : names.get(target) ?? 'another target',
+        viewport: renderer.getViewport(new Vector4()).toArray(),
+        clearColor: renderer.getClearColor(new Color()).getHexString(),
+        clearAlpha: renderer.getClearAlpha(),
+    }
+}
+
 window.cases = {
     /** a blit into the left half with `clear`: the right half's pixel */
     blitRightHalf(clear) {
@@ -110,6 +131,60 @@ window.cases = {
         const viewport = new Vector4()
         renderer.getViewport(viewport)
         return { target: renderer.getRenderTarget(), viewport: viewport.toArray(), clearColor: renderer.getClearColor(new Color()).getHexString(), clearAlpha: renderer.getClearAlpha() }
+    },
+
+    /** saveGlobalState(), then other state, then a helper that saves and restores its own (generateBlurredMipmaps), then restoreGlobalState() */
+    nestedSave() {
+        setKnownState()
+        Rendering.saveGlobalState(renderer)
+        const other = target()
+        renderer.setRenderTarget(other)
+        renderer.setViewport(0, 0, 8, 8)
+        renderer.setClearColor(0xff0000, 1)
+        const chain = new WebGLRenderTarget(SIZE, SIZE, { minFilter: LinearMipmapLinearFilter })
+        generateBlurredMipmaps(renderer, { target: chain, blurKernel_heightFraction: 1 / 16 })
+        Rendering.restoreGlobalState(renderer)
+        return globalState(new Map([[other, 'other']]))
+    },
+
+    /** a save whose restore never runs (as when a throw skips it), inside a save restored by its snapshot */
+    unrestoredInnerSave() {
+        setKnownState()
+        const outer = Rendering.saveGlobalState(renderer)
+        const other = target()
+        renderer.setRenderTarget(other)
+        Rendering.saveGlobalState(renderer)
+        Rendering.restoreGlobalState(renderer, outer)
+        return globalState(new Map([[other, 'other']]))
+    },
+
+    /** passes inside a save: restoring or not, one throwing from inside render(), one from its override material */
+    passesInsideSave() {
+        setKnownState()
+        Rendering.saveGlobalState(renderer)
+        const t = target()
+        const pass = (options) => Rendering.renderPass(renderer, { target: t, scene: fill([1, 1, 1, 1]), camera: ortho, clearColor: false, clearDepth: false, restoreGlobalState: false, ...options })
+        pass({})
+        pass({ restoreGlobalState: true })
+        const throwing = fill([1, 1, 1, 1])
+        throwing.onBeforeRender = () => { throw new Error('in render()') }
+        try { pass({ scene: throwing, restoreGlobalState: true }) } catch { }
+        try { pass({ overrideMaterial: () => { throw new Error('in the override') } }) } catch { }
+        renderer.setRenderTarget(t)
+        Rendering.restoreGlobalState(renderer)
+        return globalState(new Map([[t, 'the passes\' target']]))
+    },
+
+    /** the clear colour after gaussianBlur() and pyramidBloom(), which restore global state by default */
+    blurClearColour() {
+        const source = target()
+        renderer.setRenderTarget(null)
+        renderer.setClearColor(0x00ff00, 0.5)
+        gaussianBlur(renderer, new RenderTargetStore(), source.texture, 9)
+        const afterBlur = globalState()
+        pyramidBloom(renderer, new RenderTargetStore(), source.texture, [{ sigma: 8, weight: 1 }])
+        const afterBloom = globalState()
+        return { afterBlur: [afterBlur.clearColor, afterBlur.clearAlpha], afterBloom: [afterBloom.clearColor, afterBloom.clearAlpha] }
     },
 }
 window.ready = true

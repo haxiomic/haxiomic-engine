@@ -49,3 +49,23 @@ test('with clearColor: false the colour is kept, a colour background too; with a
     expect(cleared.corner[3]).toBe(255)
     expect(cleared.backgroundKept).toBe(true)
 })
+
+const knownState = { target: null, viewport: [1, 2, 3, 4], clearColor: '00ff00', clearAlpha: 0.5 }
+
+test('saveGlobalState nests: a helper that saves and restores inside a save leaves the outer restore intact', async ({ page }) => {
+    // before, generateBlurredMipmaps saved into the same slot, and the outer restore put back the state it found
+    expect(await page.evaluate(() => window.cases.nestedSave())).toEqual(knownState)
+})
+
+test('restoring a snapshot drops the saves after it that were never restored', async ({ page }) => {
+    expect(await page.evaluate(() => window.cases.unrestoredInnerSave())).toEqual(knownState)
+})
+
+test('passes inside a save leave it intact, restoring or not, throwing or not', async ({ page }) => {
+    expect(await page.evaluate(() => window.cases.passesInsideSave())).toEqual(knownState)
+})
+
+test('gaussianBlur and pyramidBloom put back the clear colour', async ({ page }) => {
+    // their passes clear with shaderMaterialPass's default magenta
+    expect(await page.evaluate(() => window.cases.blurClearColour())).toEqual({ afterBlur: ['00ff00', 0.5], afterBloom: ['00ff00', 0.5] })
+})
