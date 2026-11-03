@@ -1,4 +1,5 @@
 import type { Texture } from "three";
+import { blurredMipmapTopLevel } from "../math/Math.js";
 
 /**
  * Bloom from a blurred mipmap chain, as GLSL to compose into your own shaders: the sum of mip levels `minLod` up to
@@ -95,10 +96,17 @@ ${bloomAccumulationDynamicStatements(smoothLevels, { minLod: 'firstLod', maxLod:
 /**
  * The level range to sum for a mipmap chain: `maxLod` is the chain's last level (0 when it has no mip levels) and
  * `minLod` is clamped to it. Read again when the texture is resized, as its level count changes.
+ *
+ * For a source much wider than tall (or taller than wide), `generateBlurredMipmaps()` stops before the last allocated
+ * level (see `blurredMipmapTopLevel()`), so `maxLod` stops one past the last level it renders.
  */
 export function bloomLodRange(mipmapSource: Texture | null | undefined, minLod: number): { minLod: number, maxLod: number } {
     const mipmapCount: number = mipmapSource?.mipmaps?.length ?? 0;
-    const maxLod = Math.max(0, mipmapCount - 1);
+    let maxLod = Math.max(0, mipmapCount - 1);
+    const image = mipmapSource?.image as { width?: number, height?: number } | null | undefined;
+    if (image?.width && image?.height) {
+        maxLod = Math.min(maxLod, blurredMipmapTopLevel(image.width, image.height) + 1);
+    }
     return { minLod: Math.min(minLod, maxLod), maxLod };
 }
 

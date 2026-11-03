@@ -1,7 +1,7 @@
 import Blur1D from "../materials/Blur1D.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 import { RGBASwizzle, Swizzle } from "../materials/Swizzle.js";
-import { mipmapCount } from "../math/Math.js";
+import { blurredMipmapTopLevel, mipmapCount } from "../math/Math.js";
 import { GaussianTapsMaterial, fullscreenVertexShader } from "./PyramidInternals.js";
 import { Rendering } from "./Rendering.js";
 import RenderTargetStore from "./RenderTargetStore.js";
@@ -69,7 +69,7 @@ export function generateBlurredMipmaps(
     let height = target.height;
     let sourceMipmapLevel = 0;
 
-    // render blurred mips
+    // render blurred mips; blurredMipmapTopLevel() mirrors this loop
     let i = 1;
     while (width > 1 && height > 1) {
         const blurXShader = Blur1D.get(
@@ -169,17 +169,6 @@ type AntiAliasedMipmapsOptions = {
 	swizzle?: Swizzle,
 }
 
-/** Number of levels `generateBlurredMipmaps()` renders: it halves until either side reaches 1 pixel */
-function renderedTopLevel(width: number, height: number) {
-	let level = 0;
-	while (width > 1 && height > 1) {
-		width = Math.floor(width / 2);
-		height = Math.floor(height / 2);
-		level++;
-	}
-	return level;
-}
-
 /**
  * Blur variance (in source pixels²) of each level of the original `generateBlurredMipmaps()` chain: its cascade of
  * truncated x (at the finer level) and y (at the level) Blur1D passes, plus its decimation. Index 0 is the source.
@@ -228,7 +217,7 @@ function generateAntiAliasedMipmaps(renderer: WebGLRenderer, options: AntiAliase
 		target.texture.mipmaps = new Array(mipmapCount(target.width, target.height)).fill({});
 	}
 
-	const top = renderedTopLevel(target.width, target.height);
+	const top = blurredMipmapTopLevel(target.width, target.height);
 	const merged = options.coreLinearSampling ?? true;
 	const swizzle = options.swizzle ?? '';
 	const variances = blurredMipmapVariances(target.height, top, options.blurKernel_heightFraction, truncationSigma);

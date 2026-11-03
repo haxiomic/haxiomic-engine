@@ -33,6 +33,21 @@ export function mipmapCount(width: number, height: number) {
     return Math.floor(Math.log2(Math.max(width, height))) + 1;
 }
 
+/**
+ * The last mipmap level `generateBlurredMipmaps()` renders for a target of this size. The chain halves until either
+ * side reaches 1 pixel, so it can stop short of the `mipmapCount()` levels allocated, which count down the longer side:
+ * the levels above this one are allocated but never written.
+ */
+export function blurredMipmapTopLevel(width: number, height: number) {
+    let level = 0;
+    while (width > 1 && height > 1) {
+        width = Math.floor(width / 2);
+        height = Math.floor(height / 2);
+        level++;
+    }
+    return level;
+}
+
 export function mipmapDimension(widthOrHeight: number, level: number) {
     return Math.max(1, widthOrHeight >> level)
 }
