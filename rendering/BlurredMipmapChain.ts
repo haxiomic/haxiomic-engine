@@ -26,14 +26,15 @@ export function generateBlurredMipmaps(
         antiAliased?: boolean,
     }
 ) {
+    // for untyped callers that leave it out; one default for both chains
+    const blurKernel_heightFraction = options.blurKernel_heightFraction ?? 1/16;
     if (options.antiAliased) {
-        generateAntiAliasedMipmaps(renderer, options);
+        generateAntiAliasedMipmaps(renderer, { ...options, blurKernel_heightFraction });
         return;
     }
 
     const target = options.target;
     const swizzle = options.swizzle;
-    const blurKernel_heightFraction = options.blurKernel_heightFraction ?? 1/16;
     const blurKernel_pixels = blurKernel_heightFraction * target.height * .5;
     const truncationSigma = options.truncationSigma ?? 0.5;
     const restoreGlobalState = options.restoreGlobalState ?? true;
@@ -220,7 +221,7 @@ function generateAntiAliasedMipmaps(renderer: WebGLRenderer, options: AntiAliase
 	const top = blurredMipmapTopLevel(target.width, target.height);
 	const merged = options.coreLinearSampling ?? true;
 	const swizzle = options.swizzle ?? '';
-	const variances = blurredMipmapVariances(target.height, top, options.blurKernel_heightFraction ?? 1/16, truncationSigma);
+	const variances = blurredMipmapVariances(target.height, top, options.blurKernel_heightFraction, truncationSigma);
 	const store = RenderTargetStore.getStoreForRenderTarget(target);
 	const tempOptions = {
 		magFilter: LinearFilter,
