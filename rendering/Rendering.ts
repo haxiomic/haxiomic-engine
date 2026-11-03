@@ -76,10 +76,13 @@ export namespace Rendering {
 		 * A clear covers the whole target, whatever `viewport` says: only a scissor test limits it (`target.scissorTest`,
 		 * or the renderer's for the canvas), and the pass leaves that as it finds it
 		 *
-		 * The clear is three's, with `autoClear` for the `render()` call: a scene's colour `background` clears in its
-		 * place, the scene's own `onBeforeRender` runs before it, and code that renders from inside the scene (an
-		 * object's `onBeforeRender`) sees `autoClear` on, with this pass's buffers. With a texture background the clear
-		 * is made before `render()`
+		 * A scene's colour `background` clears in place of the clear colour, only the buffers this pass clears.
+		 *
+		 * When the pass clears colour and depth, the clear is three's, with `autoClear` for the `render()` call: the
+		 * scene's own `onBeforeRender` runs before it, and code that renders from inside the scene (an object's
+		 * `onBeforeRender`) sees `autoClear` on, with this pass's buffers. Otherwise, and with a texture background, the
+		 * clear is made before `render()` and that code sees `autoClear` off, so three's `Reflector`, `Refractor` and
+		 * `Water` clear their own target in full
 		 */
 		clearColor: {
 			rgb: ColorRepresentation,
@@ -239,16 +242,21 @@ export namespace Rendering {
 		// three makes the clear, with autoClear: inside render(), after it has drawn any shadow maps and transmission
 		// pass to their own targets, so the clear and the scene's draws are one GPU render pass. A clear made before
 		// render() is a pass of its own there, which on tile-based GPUs writes the whole target out and reads it back.
-		// Not with a texture background: three then clears with whatever clear colour its shadow map left set (white)
-		let needsClear = clearColor !== false || clearDepth === true || clearStencil === true;
+		// - Only when the pass clears colour and depth. autoClear and its buffers are the renderer's, so code rendering
+		//   from inside the scene gets the same clear for its own target, and three's Reflector, Refractor and Water clear
+		//   their target themselves only when autoClear is off: a partial clear would leave them last frame's colour or
+		//   depth. Otherwise the clear is made before render(), with autoClear off, as it was
+		// - Not with a texture background: three then clears with whatever clear colour its shadow map left set (white)
+		// Either way three gets the pass's buffers, for the clear it makes for a colour background whatever autoClear says
+		const color = clearColor !== false, depth = clearDepth === true, stencil = clearStencil === true;
 		const textureBackground = isScene(scene) && (scene.background as Texture | null)?.isTexture === true;
-		if (needsClear && textureBackground) {
-			renderer.clear(clearColor !== false, clearDepth === true, clearStencil === true);
-		} else if (needsClear) {
+		renderer.autoClearColor = color;
+		renderer.autoClearDepth = depth;
+		renderer.autoClearStencil = stencil;
+		if (color && depth && !textureBackground) {
 			renderer.autoClear = true;
-			renderer.autoClearColor = clearColor !== false;
-			renderer.autoClearDepth = clearDepth === true;
-			renderer.autoClearStencil = clearStencil === true;
+		} else if (color || depth || stencil) {
+			renderer.clear(color, depth, stencil);
 		}
 
 		try {

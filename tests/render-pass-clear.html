@@ -252,6 +252,56 @@ window.compare = (spec) => {
         seenIn: { junk: count(r.colour, [204, 153, 51]), far: count(r.depth, [255, 0, 255]), stencil0: count(r.stencil, [0, 255, 255]) },
     }
 }
+/**
+ * An object that renders into a target of its own from its onBeforeRender as three's Reflector, Refractor and Water do
+ * (examples/jsm/objects/Reflector.js): it clears the target itself only when autoClear is off, then renders. Two frames
+ * of a renderPass with these clear flags, its own scene changing between them: whether last frame's colour stayed
+ * where nothing draws now, and whether last frame's depth hid what is farther now
+ */
+window.reflectorLike = ({ color, depth, stencil }) => {
+    const own = new WebGLRenderTarget(SIZE, SIZE, { depthBuffer: true })
+    const target = new WebGLRenderTarget(SIZE, SIZE, { depthBuffer: true, stencilBuffer: true })
+    let ownScene = null
+    const object = quad(0, 'vec4(0.5)', {})
+    object.onBeforeRender = (r) => {
+        const current = r.getRenderTarget()
+        r.setRenderTarget(own)
+        r.state.buffers.depth.setMask(true)
+        if (r.autoClear === false) r.clear()
+        r.render(ownScene, ortho)
+        r.setRenderTarget(current)
+    }
+    const scene = new Scene()
+    scene.add(object)
+    const frame = (...meshes) => {
+        ownScene = new Scene()
+        ownScene.add(...meshes)
+        Rendering.renderPass(renderer, { target, scene, camera: ortho, clearColor: color ? { rgb: 0x000000, alpha: 1 } : false, clearDepth: depth, clearStencil: stencil, restoreGlobalState: false })
+    }
+    const half = (side, z, fragment) => {
+        const mesh = quad(z, fragment, {})
+        mesh.geometry.scale(0.5, 1, 1).translate(side * 0.5, 0, 0)
+        return mesh
+    }
+    const pixel = (x, y) => {
+        const out = new Uint8Array(4)
+        renderer.readRenderTargetPixels(own, x, y, 1, 1, out)
+        return [...out]
+    }
+    const red = 'vec4(1.0, 0.0, 0.0, 1.0)', green = 'vec4(0.0, 1.0, 0.0, 1.0)'
+    // colour: red over the left half, then green over the right half; the left half should not still be red
+    frame(half(-1, 0, red))
+    frame(half(1, 0, green))
+    const left = pixel(SIZE / 8, SIZE / 2)
+    // depth: red near over everything, then green farther over everything; green should show
+    frame(quad(-0.5, red, {}))
+    frame(quad(0.5, green, {}))
+    const centre = pixel(SIZE / 2, SIZE / 2)
+    own.dispose()
+    target.dispose()
+    return { staleColour: left[0] === 255 && left[1] === 0, farHidden: !(centre[0] === 0 && centre[1] === 255) }
+}
+
 /** a case's pictures, each way, for screenshots */
 window.pictures = (spec) => Object.fromEntries(Object.keys(ways).map(how => {
     const r = run(spec, how)
