@@ -8,17 +8,6 @@ import { isObjectWidthMaterial, ObjectUtils, ObjectWidthMaterial } from "../util
 
 export namespace Rendering {
 
-	const _renderPassSnapshot = {
-		renderTarget: null as WebGLRenderTarget | null,
-		activeMipmapLevel: 0,
-		activeCubeFace: 0,
-		clearColor: {
-			rgb: new Color(),
-			alpha: 0,
-		},
-		viewport: new Vector4(),
-	}
-
 	const _tempGlobalState = {
 		renderTarget: null as WebGLRenderTarget | null,
 		activeMipmapLevel: 0,
@@ -42,7 +31,6 @@ export namespace Rendering {
 	const SavedMaterialSymbol = Symbol('SavedMaterial');
 
 	export function saveGlobalState(renderer: WebGLRenderer) {
-		// update _renderPassSnapshot
 		_tempGlobalState.renderTarget = renderer.getRenderTarget();
 		_tempGlobalState.activeMipmapLevel = renderer.getActiveMipmapLevel();
 		_tempGlobalState.activeCubeFace = renderer.getActiveCubeFace();
@@ -84,6 +72,9 @@ export namespace Rendering {
 		 * If provided the target will be cleared with this color before the scene draws
 		 * Otherwise the target will not be cleared
 		 *
+		 * A clear covers the whole target, whatever `viewport` says: only a scissor test limits it (`target.scissorTest`,
+		 * or the renderer's for the canvas), and the pass leaves that as it finds it
+		 *
 		 * The clear is three's, with `autoClear` for the `render()` call: a scene's colour `background` clears in its
 		 * place, the scene's own `onBeforeRender` runs before it, and code that renders from inside the scene (an
 		 * object's `onBeforeRender`) sees `autoClear` on, with this pass's buffers. With a texture background the clear
@@ -94,13 +85,14 @@ export namespace Rendering {
 			alpha: number,
 		} | false,
 		/**
-		 * If provided the target will be cleared with this depth before the scene draws
-		 * Otherwise the target will not be cleared
+		 * If true the target's depth will be cleared, to the far plane, before the scene draws
+		 * Otherwise it is kept
 		 */
 		clearDepth: boolean,
 		/**
-		 * If provided the target will be cleared with this stencil before the scene draws
-		 * Otherwise the target will not be cleared
+		 * If true the target's stencil will be cleared, to 0, before the scene draws (a target has a stencil buffer only
+		 * when made with one: three's canvas with `stencil: true`, a render target with `stencilBuffer: true`)
+		 * Otherwise it is kept
 		 */
 		clearStencil?: boolean,
 		/**
@@ -116,29 +108,33 @@ export namespace Rendering {
 		 */
 		layers?: Layers,
 		/**
-		 * Restore global state after rendering
+		 * Put the renderer's render target, viewport and clear colour back after rendering (everything else the pass
+		 * changes is always put back)
 		 * @default false
 		 */
 		restoreGlobalState: boolean,
 	}
 
 	/**
-	 * Render to texture operation without changing global state
-	 * 
-	 * This should be used instead of `renderer.render()`
+	 * Renders `scene` into `target`, as the options say. This should be used instead of `renderer.render()`
+	 *
+	 * What it changes on the renderer for the call (`autoClear` and its buffers, tone mapping, the camera's layers,
+	 * override materials) is put back after; the render target, viewport and clear colour only with `restoreGlobalState`
 	 */
 	export function renderPass(renderer: WebGLRenderer, options: RenderPassOptions) {
 		let { target, scene, camera, viewport, clearColor, clearDepth, clearStencil, overrideMaterial, layers } = options;
 
-		// save global state
-		_renderPassSnapshot.renderTarget = renderer.getRenderTarget();
-		_renderPassSnapshot.activeMipmapLevel = renderer.getActiveMipmapLevel();
-		_renderPassSnapshot.activeCubeFace = renderer.getActiveCubeFace();
+		// save global state (this call's own: a pass may run inside another's render())
+		const _renderTarget = renderer.getRenderTarget();
+		const _activeMipmapLevel = renderer.getActiveMipmapLevel();
+		const _activeCubeFace = renderer.getActiveCubeFace();
+		const _viewport = renderer.getViewport(new Vector4());
+		const _clearColor = renderer.getClearColor(new Color());
+		const _clearAlpha = renderer.getClearAlpha();
 		let _autoClear = renderer.autoClear;
 		let _autoClearColor = renderer.autoClearColor;
 		let _autoClearDepth = renderer.autoClearDepth;
 		let _autoClearStencil = renderer.autoClearStencil;
-		renderer.getViewport(_renderPassSnapshot.viewport);
 		let _toneMapping = renderer.toneMapping;
 		let _toneMappingExposure = renderer.toneMappingExposure;
 		let _layersMask = camera.layers.mask;
@@ -225,8 +221,6 @@ export namespace Rendering {
 
 		// clear options
 		if (clearColor !== false) {
-			renderer.getClearColor(_renderPassSnapshot.clearColor.rgb);
-			_renderPassSnapshot.clearColor.alpha = renderer.getClearAlpha();
 			renderer.setClearColor(clearColor.rgb, clearColor.alpha);
 		}
 
@@ -257,10 +251,10 @@ export namespace Rendering {
 			// if we only use Rendering.renderPass() rather than renderer.render(), we don't need to restore the global state
 			// changing renderTarget can be expensive, so we should avoid it if possible
 			if (options.restoreGlobalState === true) {
-				renderer.setRenderTarget(_renderPassSnapshot.renderTarget, _renderPassSnapshot.activeCubeFace, _renderPassSnapshot.activeMipmapLevel);
-				renderer.setViewport(_renderPassSnapshot.viewport.x, _renderPassSnapshot.viewport.y, _renderPassSnapshot.viewport.z, _renderPassSnapshot.viewport.w);
+				renderer.setRenderTarget(_renderTarget, _activeCubeFace, _activeMipmapLevel);
+				renderer.setViewport(_viewport);
 				if (clearColor !== false) {
-					renderer.setClearColor(_renderPassSnapshot.clearColor.rgb, _renderPassSnapshot.clearColor.alpha);
+					renderer.setClearColor(_clearColor, _clearAlpha);
 				}
 			}
 
@@ -325,7 +319,7 @@ export namespace Rendering {
 		toneMapping?: ToneMapping,
 		toneMappingExposure?: number,
 		/**
-		 * Clears magenta if not provided, don't clear if null
+		 * Clears magenta if not provided, doesn't clear if `false`
 		 */
 		clearColor?: {
 			rgb: ColorRepresentation,
@@ -421,6 +415,9 @@ export namespace Rendering {
 		targetCubeFace?: number,
 		viewport?: Vector4,
 		restoreGlobalState: boolean,
+		/**
+		 * Clear the target first: colour to transparent black, depth and stencil. Default false
+		 */
 		clear?: boolean,
 	}
 
@@ -468,9 +465,9 @@ export namespace Rendering {
 			toneMapping: options.toneMapping ?? NoToneMapping,
 			toneMappingExposure: options.toneMappingExposure,
 			restoreGlobalState: options.restoreGlobalState,
-			clearColor: options.clear != null ? {rgb: 0x00000, alpha: 0} : false,
-			clearDepth: options.clear != null ? options.clear : false,
-			clearStencil: options.clear != null ? options.clear : false,
+			clearColor: options.clear === true ? {rgb: 0x00000, alpha: 0} : false,
+			clearDepth: options.clear === true,
+			clearStencil: options.clear === true,
 		});
 	}
 
@@ -565,7 +562,6 @@ export namespace Rendering {
 			delete copyMaterials[key];
 		}
 
-		resetState(_renderPassSnapshot);
 		resetState(_tempGlobalState);
 	}
 

@@ -1,0 +1,69 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Render pass fixture</title>
+<!-- no favicon request: a headed browser makes one, a 404 in the console -->
+<link rel="icon" href="data:,">
+
+<script type="importmap">
+{ "imports": { "three": "/node_modules/three/build/three.module.js" } }
+</script>
+<script type="module">
+import { Color, DataTexture, Mesh, OrthographicCamera, PlaneGeometry, ShaderMaterial, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
+import { Rendering } from '/dist/rendering/Rendering.js'
+
+/* Rendering.renderPass and its helpers, as their options say: each case into a 64² target filled with junk first */
+
+const SIZE = 64
+const canvas = document.createElement('canvas')
+canvas.width = canvas.height = SIZE
+const renderer = new WebGLRenderer({ canvas })
+renderer.setPixelRatio(1)
+renderer.setSize(SIZE, SIZE, false)
+const ortho = new OrthographicCamera(-1, 1, 1, -1, 0, 1)
+const fill = (rgba) => new Mesh(new PlaneGeometry(2, 2), new ShaderMaterial({
+    vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: `void main() { gl_FragColor = vec4(${rgba.join(', ')}); }`,
+}))
+// junk: 204, 153, 51, 153
+const junk = fill([0.8, 0.6, 0.2, 0.6])
+
+function target() {
+    const t = new WebGLRenderTarget(SIZE, SIZE, { depthBuffer: true, stencilBuffer: true })
+    renderer.setRenderTarget(t)
+    renderer.clear()
+    renderer.render(junk, ortho)
+    return t
+}
+function pixel(t, x, y) {
+    const out = new Uint8Array(4)
+    renderer.readRenderTargetPixels(t, x, y, 1, 1, out)
+    return [...out]
+}
+const leftHalf = () => new Vector4(0, 0, SIZE / 2, SIZE)
+
+window.cases = {
+    /** a blit into the left half with `clear`: the right half's pixel */
+    blitRightHalf(clear) {
+        const t = target()
+        const green = new DataTexture(new Uint8Array([0, 255, 0, 255]), 1, 1)
+        green.needsUpdate = true
+        Rendering.blit(renderer, { source: green, target: t, viewport: leftHalf(), clear, restoreGlobalState: true })
+        return pixel(t, SIZE - 2, 1)
+    },
+
+    /** a pass restoring global state that runs another from inside its render(): what the renderer is left with */
+    nestedRestore() {
+        const outerTarget = target(), innerTarget = target()
+        const scene = fill([1, 1, 1, 1])
+        scene.onBeforeRender = () => Rendering.renderPass(renderer, { target: innerTarget, scene: fill([1, 0, 0, 1]), camera: ortho, clearColor: { rgb: 0xff0000, alpha: 1 }, clearDepth: true, restoreGlobalState: true })
+        renderer.setRenderTarget(null)
+        renderer.setViewport(1, 2, 3, 4)
+        renderer.setClearColor(0x00ff00, 0.5)
+        Rendering.renderPass(renderer, { target: outerTarget, scene, camera: ortho, clearColor: { rgb: 0x0000ff, alpha: 1 }, clearDepth: true, restoreGlobalState: true })
+        const viewport = new Vector4()
+        renderer.getViewport(viewport)
+        return { target: renderer.getRenderTarget(), viewport: viewport.toArray(), clearColor: renderer.getClearColor(new Color()).getHexString(), clearAlpha: renderer.getClearAlpha() }
+    },
+}
+window.ready = true
+</script>
