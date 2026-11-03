@@ -1,4 +1,4 @@
-import { Texture, Uniform, Vector2, Vector4, WebGLRenderer } from "three";
+import { Texture, Uniform, Vector2 } from "three";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 
 /**
@@ -87,21 +87,6 @@ export function planPyramidBlur(sigma: number, options: PyramidTuning = {}): Pyr
 	}
 
 	return { level, coreSigma, downsampleFilters, upsampleFilter };
-}
-
-/**
- * Snapshot render target, mip level, cube face & viewport, returning a function that restores them. (Like engine
- * `gaussianBlur`, which restores state after each pass, but without overwriting a caller's `Rendering.saveGlobalState`.)
- */
-export function snapshotRendererState(renderer: WebGLRenderer) {
-	const target = renderer.getRenderTarget();
-	const cubeFace = renderer.getActiveCubeFace();
-	const mipmapLevel = renderer.getActiveMipmapLevel();
-	const viewport = renderer.getViewport(new Vector4());
-	return () => {
-		renderer.setRenderTarget(target, cubeFace, mipmapLevel);
-		renderer.setViewport(viewport.x, viewport.y, viewport.z, viewport.w);
-	};
 }
 
 /**

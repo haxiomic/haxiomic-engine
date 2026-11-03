@@ -3,7 +3,7 @@ import RenderTargetStore, { RenderTargetStoreOptions } from "./RenderTargetStore
 import { Rendering } from "./Rendering.js";
 import { ShaderMaterial } from "../materials/ShaderMaterial.js";
 import { PyramidBorder } from "./PyramidGaussianBlur.js";
-import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, binomialDownsampleGLSL, borderGLSL, bsplineGLSL, defaultCoreLinearSampling, downsampleVariance, fullscreenVertexShader, getTextureSize, snapshotRendererState } from "./PyramidInternals.js";
+import { DEFAULT_CORE_TRUNCATION, DownsampleMaterial, GaussianTapsMaterial, LEVEL_PADDING, binomialDownsampleGLSL, borderGLSL, bsplineGLSL, defaultCoreLinearSampling, downsampleVariance, fullscreenVertexShader, getTextureSize } from "./PyramidInternals.js";
 
 /**
  * One Gaussian of a bloom: σ in pixels, and its weight in the sum. A `Vector4` weights each channel (r, g, b, a)
@@ -46,7 +46,7 @@ export type PyramidBloomOptions = {
 	target?: WebGLRenderTarget | null,
 	/** Key for the cached intermediate and result targets @default texture.uuid */
 	cacheId?: string | null,
-	/** Restore the renderer's render target & viewport afterwards @default true */
+	/** Restore the renderer's render target, viewport and clear colour afterwards @default true */
 	restoreGlobalState?: boolean,
 	/**
 	 * Advanced, overrides `quality`. Smallest core σ in texels of its level, optionally per term (index in σ order);
@@ -169,7 +169,7 @@ export function pyramidBloom(
 	// levels below from here on count from the source
 	const plan = planPyramidBloom(terms, options.minCoreSigma ?? preset.minCoreSigma, sourceLevel)
 		.map(p => ({ ...p, level: p.level - sourceLevel }));
-	const restoreState = options.restoreGlobalState !== false ? snapshotRendererState(renderer) : null;
+	const savedState = options.restoreGlobalState !== false ? Rendering.snapshotGlobalState(renderer) : null;
 	const maxLevel = Math.max(0, ...plan.map(p => p.level));
 
 	// downsample chain; levels[k] = { texture, width, height } (level 0 is the unpadded source)
@@ -252,7 +252,7 @@ export function pyramidBloom(
 		accumulated = { texture: target.texture, width: level.width, height: level.height };
 	}
 
-	restoreState?.();
+	if (savedState) Rendering.restoreGlobalState(renderer, savedState);
 	return finalTarget;
 }
 

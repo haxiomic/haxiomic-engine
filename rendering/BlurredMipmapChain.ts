@@ -60,9 +60,7 @@ export function generateBlurredMipmaps(
 
     const gl = renderer.getContext();
 
-    if (restoreGlobalState) {
-        Rendering.saveGlobalState(renderer);
-    }
+    const savedState = restoreGlobalState ? Rendering.snapshotGlobalState(renderer) : null;
 
     const sourceTexture = target.texture;
     let width = target.width;
@@ -121,8 +119,8 @@ export function generateBlurredMipmaps(
         i++;
     }
 
-    if (restoreGlobalState) {
-        Rendering.restoreGlobalState(renderer);
+    if (savedState) {
+        Rendering.restoreGlobalState(renderer, savedState);
     }
 }
 
@@ -231,7 +229,7 @@ function generateAntiAliasedMipmaps(renderer: WebGLRenderer, options: AntiAliase
 		wrapT: target.texture.wrapT,
 	};
 
-	if (restoreGlobalState) Rendering.saveGlobalState(renderer);
+	const savedState = restoreGlobalState ? Rendering.snapshotGlobalState(renderer) : null;
 
 	let width = target.width, height = target.height;
 	for (let i = 1; i <= top; i++) {
@@ -294,7 +292,7 @@ function generateAntiAliasedMipmaps(renderer: WebGLRenderer, options: AntiAliase
 		}
 	}
 
-	if (restoreGlobalState) Rendering.restoreGlobalState(renderer);
+	if (savedState) Rendering.restoreGlobalState(renderer, savedState);
 }
 
 function erf(x: number) {

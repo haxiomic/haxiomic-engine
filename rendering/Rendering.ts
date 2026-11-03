@@ -8,41 +8,64 @@ import { isObjectWidthMaterial, ObjectUtils, ObjectWidthMaterial } from "../util
 
 export namespace Rendering {
 
-	const _tempGlobalState = {
-		renderTarget: null as WebGLRenderTarget | null,
-		activeMipmapLevel: 0,
-		activeCubeFace: 0,
-		clearColor: {
-			rgb: new Color(),
-			alpha: 0,
-		},
-		viewport: new Vector4(),
+	/**
+	 * Renderer state for `restoreGlobalState()` to put back: the render target with its cube face and mip level, the
+	 * viewport and the clear colour
+	 */
+	export type GlobalStateSnapshot = {
+		renderTarget: WebGLRenderTarget | null,
+		activeCubeFace: number,
+		activeMipmapLevel: number,
+		viewport: Vector4,
+		clearColor: Color,
+		clearAlpha: number,
 	}
 
-	function resetState(state: typeof _tempGlobalState) {
-		state.renderTarget = null;
-		state.activeMipmapLevel = 0;
-		state.activeCubeFace = 0;
-		state.clearColor.rgb.set(0, 0, 0);
-		state.clearColor.alpha = 0;
-		state.viewport.set(0, 0, 0, 0);
-	}
+	/** The latest `saveGlobalState()`: what `restoreGlobalState()` puts back when not given a snapshot */
+	let _latestSave: GlobalStateSnapshot | null = null;
 
 	const SavedMaterialSymbol = Symbol('SavedMaterial');
 
-	export function saveGlobalState(renderer: WebGLRenderer) {
-		_tempGlobalState.renderTarget = renderer.getRenderTarget();
-		_tempGlobalState.activeMipmapLevel = renderer.getActiveMipmapLevel();
-		_tempGlobalState.activeCubeFace = renderer.getActiveCubeFace();
-		renderer.getClearColor(_tempGlobalState.clearColor.rgb);
-		_tempGlobalState.clearColor.alpha = renderer.getClearAlpha();
-		renderer.getViewport(_tempGlobalState.viewport);
+	/**
+	 * Saves the renderer's render target (with its cube face and mip level), viewport and clear colour, for
+	 * `restoreGlobalState()` to put back, and returns them.
+	 *
+	 * `restoreGlobalState()` without a snapshot puts back the latest save, as many times as it's called, and a save
+	 * needn't be restored. Only this function makes the latest save: the engine's passes and helpers keep their own
+	 * state, so a restore without a snapshot puts back the app's last save, never a helper's.
+	 *
+	 * To nest saves, keep the snapshot and pass it to `restoreGlobalState()`: it puts back exactly this state, whatever
+	 * was saved since. Code that runs inside a caller's save and restores its own state, such as a library's helper,
+	 * should use `snapshotGlobalState()` instead, so the caller's save stays the latest
+	 */
+	export function saveGlobalState(renderer: WebGLRenderer): GlobalStateSnapshot {
+		return _latestSave = snapshotGlobalState(renderer);
 	}
 
-	export function restoreGlobalState(renderer: WebGLRenderer) {
-		renderer.setRenderTarget(_tempGlobalState.renderTarget, _tempGlobalState.activeCubeFace, _tempGlobalState.activeMipmapLevel);
-		renderer.setViewport(_tempGlobalState.viewport.x, _tempGlobalState.viewport.y, _tempGlobalState.viewport.z, _tempGlobalState.viewport.w);
-		renderer.setClearColor(_tempGlobalState.clearColor.rgb, _tempGlobalState.clearColor.alpha);
+	/**
+	 * The state `saveGlobalState()` saves, without making it the latest save: for code that restores its own snapshot
+	 * (the engine's helpers use it), so a caller's `saveGlobalState()` stays the latest
+	 */
+	export function snapshotGlobalState(renderer: WebGLRenderer): GlobalStateSnapshot {
+		return {
+			renderTarget: renderer.getRenderTarget(),
+			activeCubeFace: renderer.getActiveCubeFace(),
+			activeMipmapLevel: renderer.getActiveMipmapLevel(),
+			viewport: renderer.getViewport(new Vector4()),
+			clearColor: renderer.getClearColor(new Color()),
+			clearAlpha: renderer.getClearAlpha(),
+		};
+	}
+
+	/**
+	 * Puts back `snapshot`. Without one (or with `undefined`) it puts back the latest `saveGlobalState()`, and nothing
+	 * before any save; `null` puts back nothing
+	 */
+	export function restoreGlobalState(renderer: WebGLRenderer, snapshot: GlobalStateSnapshot | null = _latestSave) {
+		if (snapshot === null) return;
+		renderer.setRenderTarget(snapshot.renderTarget, snapshot.activeCubeFace, snapshot.activeMipmapLevel);
+		renderer.setViewport(snapshot.viewport);
+		renderer.setClearColor(snapshot.clearColor, snapshot.clearAlpha);
 	}
 
 	export type RenderPassOptions = {
@@ -585,7 +608,7 @@ export namespace Rendering {
 			delete copyMaterials[key];
 		}
 
-		resetState(_tempGlobalState);
+		_latestSave = null;
 	}
 
 }
