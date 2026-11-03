@@ -13,16 +13,20 @@ export type BloomTerm = { sigma: number, weight: number | Vector4 };
 
 /**
  * GLSL `vec4 sampleBSpline(sampler2D tex, vec2 p, vec2 invSize)`: cubic B-spline read at `p` in texel units (texel i
- * centred at i + 0.5). Reads a `sourceLevel` result at full resolution: p = gl_FragCoord.xy / 2^sourceLevel
+ * centred at i + 0.5), with 4 bilinear fetches. `tex` needs linear filtering; `invSize` is 1 / its size. Reads a
+ * `sourceLevel` result at full resolution: p = gl_FragCoord.xy / 2^sourceLevel. Guarded, so it can be included more
+ * than once.
  */
-export const sampleBSplineGLSL = bsplineGLSL;
+export const sampleBSplineGlsl = bsplineGLSL;
 
 /**
  * GLSL `vec4 binomialDownsample(sampler2D source, vec2 sourceInvSize)`: the pyramid's own [1,3,3,1] 2x downsample of
- * `source` at this fragment (an output of half the source's size, rounded up). Builds a `sourceLevel` source, possibly
- * combining several textures into one
+ * `source` at this fragment. Builds a `sourceLevel` source, possibly combining several textures into one. It maps
+ * `gl_FragCoord`, so render a full-target pass (viewport at the origin) into a target of ceil(width / 2) ×
+ * ceil(height / 2) of the source; read `source` with linear filtering and clamp-to-edge wrapping, and pass
+ * `sourceInvSize` = 1 / its size. Guarded, so it can be included more than once.
  */
-export { binomialDownsampleGLSL };
+export const binomialDownsampleGlsl = binomialDownsampleGLSL;
 
 export type PyramidBloomOptions = {
 	/**
@@ -52,12 +56,16 @@ export type PyramidBloomOptions = {
 	/** Advanced, overrides `quality`. Truncation of the core Gaussians, in σ @default 5 */
 	coreTruncation?: number,
 	/**
-	 * The texture is this level of the image's pyramid: downsampled that many times by `binomialDownsampleGLSL`. Term σ
-	 * stay in pixels of the full image, and the result, at the texture's resolution, is the sum the full image would
-	 * give when read with `sampleBSplineGLSL` at p = gl_FragCoord.xy / 2^sourceLevel. Skips the full resolution passes,
-	 * and the source can combine several textures. Exact while no term plans finer than this level
-	 * (`pyramidBloomFinestLevel()`); a finer term runs at this level with a narrower core, or wider than asked.
-	 * Only with border 'clampPerLevel'. @default 0
+	 * The texture is this level of the image's pyramid: downsampled that many times by `binomialDownsampleGlsl`. Term σ
+	 * stay in pixels of the full image, and the result, at the texture's resolution, is the full image's sum when read
+	 * with `sampleBSplineGlsl` at p = gl_FragCoord.xy / 2^sourceLevel. Skips the full resolution passes, and the source
+	 * can combine several textures. A term that would run finer than this level runs at it with a narrower core, or
+	 * wider than asked; `pyramidBloomFinestLevel()` is the deepest level at which none does. Up to that level:
+	 * - 1: identical to the full image's result
+	 * - 2 and deeper: the one B-spline read replaces the pyramid's 2x upsamples down to full resolution, with the same
+	 *   variance but not the same kernel: ≈ 1–2% of peak from the full image's result on hard-edged content
+	 *
+	 * A non-negative integer; only with border 'clampPerLevel'. @default 0
 	 */
 	sourceLevel?: number,
 }
@@ -113,8 +121,9 @@ function planPyramidBloom(terms: BloomTerm[], minCoreSigmaOption: MinCoreSigma =
 }
 
 /**
- * The finest pyramid level any of these terms runs at, as `pyramidBloom()` plans them with these options: the deepest
- * `sourceLevel` that gives the same sum as the full resolution image (0 when a term needs full resolution)
+ * The finest pyramid level any of these terms runs at, as `pyramidBloom()` plans them with these options (0 when a term
+ * needs full resolution): the deepest `sourceLevel` at which every term keeps its full core. At sourceLevel 1 the sum
+ * is then identical to the full image's; deeper, it is close (see `sourceLevel`)
  */
 export function pyramidBloomFinestLevel(terms: BloomTerm[], options: Pick<PyramidBloomOptions, 'quality' | 'minCoreSigma'> = {}) {
 	const plan = planPyramidBloom(terms, options.minCoreSigma ?? qualityPresets[options.quality ?? 'high'].minCoreSigma);
@@ -149,6 +158,9 @@ export function pyramidBloom(
 	}
 
 	const sourceLevel = options.sourceLevel ?? 0;
+	if (!Number.isInteger(sourceLevel) || sourceLevel < 0) {
+		throw new Error(`pyramidBloom: sourceLevel must be a non-negative integer, got ${sourceLevel}`);
+	}
 	if (sourceLevel > 0 && border !== 'clampPerLevel') {
 		throw new Error(`pyramidBloom: sourceLevel needs border 'clampPerLevel'`);
 	}

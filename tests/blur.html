@@ -10,7 +10,7 @@ import { DataTexture, FloatType, LinearFilter, LinearMipmapLinearFilter, Mirrore
 import RenderTargetStore, { initMipmapArray } from '/dist/rendering/RenderTargetStore.js'
 import { gaussianBlur, separableGaussianBlur } from '/dist/rendering/GaussianBlur.js'
 import { sigmaFromKernel } from '/dist/rendering/PyramidGaussianBlur.js'
-import { binomialDownsampleGLSL, generatePyramidBloom, pyramidBloom, pyramidBloomFinestLevel, sampleBSplineGLSL } from '/dist/rendering/PyramidBloom.js'
+import { binomialDownsampleGlsl, generatePyramidBloom, pyramidBloom, pyramidBloomFinestLevel, sampleBSplineGlsl } from '/dist/rendering/PyramidBloom.js'
 import { ShaderMaterial } from '/dist/materials/ShaderMaterial.js'
 import Blur1D from '/dist/materials/Blur1D.js'
 import { mipmapCount } from '/dist/math/Math.js'
@@ -378,41 +378,60 @@ window.bloomChannelWeights = () => {
 }
 
 /**
- * pyramidBloom of a source downsampled once by binomialDownsampleGLSL (sourceLevel 1), read at full resolution with
- * sampleBSplineGLSL, against pyramidBloom of the full image: max difference relative to peak, on odd sizes
+ * pyramidBloom of a source downsampled `sourceLevel` times by binomialDownsampleGlsl, read at full resolution with
+ * sampleBSplineGlsl, against pyramidBloom of the full image: max difference relative to peak, on odd sizes. Both chunks
+ * are included twice, as a shader composing them might
  */
-window.bloomSourceLevel = () => {
+window.bloomSourceLevel = (sourceLevel = 1, sigmas = [4, 8, 16, 32]) => {
     const width = 257, height = 193
     const texture = floatTexture(fourChannelImage(width, height), width, height)
-    const terms = bloomTerms(i => (i + 1) ** -1.5)
+    const terms = sigmas.map((sigma, i) => ({ sigma, weight: (i + 1) ** -1.5 }))
     const options = { quality: 'balanced' }
     const finestLevel = pyramidBloomFinestLevel(terms, options)
     const full = read(pyramidBloom(renderer, new RenderTargetStore(), texture, terms, options))
 
-    const half = new WebGLRenderTarget(Math.ceil(width / 2), Math.ceil(height / 2), { type: FloatType, minFilter: LinearFilter, magFilter: LinearFilter, depthBuffer: false })
-    const downsample = new ShaderMaterial({
-        uniforms: { source: { value: texture }, sourceInvSize: { value: new Vector2(1 / width, 1 / height) } },
-        vertexShader: 'void main() { gl_Position = vec4(position, 1.0); }',
-        fragmentShader: `uniform sampler2D source; uniform vec2 sourceInvSize;
-            ${binomialDownsampleGLSL}
-            void main() { gl_FragColor = binomialDownsample(source, sourceInvSize); }`,
-    })
-    Rendering.shaderMaterialPass(renderer, { target: half, shader: downsample, restoreGlobalState: true })
-    const coarse = pyramidBloom(renderer, new RenderTargetStore(), half.texture, terms, { ...options, sourceLevel: 1 })
+    let source = texture, sourceWidth = width, sourceHeight = height
+    for (let i = 0; i < sourceLevel; i++) {
+        const half = new WebGLRenderTarget(Math.ceil(sourceWidth / 2), Math.ceil(sourceHeight / 2), { type: FloatType, minFilter: LinearFilter, magFilter: LinearFilter, depthBuffer: false })
+        const downsample = new ShaderMaterial({
+            uniforms: { source: { value: source }, sourceInvSize: { value: new Vector2(1 / sourceWidth, 1 / sourceHeight) } },
+            vertexShader: 'void main() { gl_Position = vec4(position, 1.0); }',
+            fragmentShader: `uniform sampler2D source; uniform vec2 sourceInvSize;
+                ${binomialDownsampleGlsl}
+                ${binomialDownsampleGlsl}
+                void main() { gl_FragColor = binomialDownsample(source, sourceInvSize); }`,
+        })
+        Rendering.shaderMaterialPass(renderer, { target: half, shader: downsample, restoreGlobalState: true })
+        source = half.texture
+        sourceWidth = half.width
+        sourceHeight = half.height
+    }
+    const coarse = pyramidBloom(renderer, new RenderTargetStore(), source, terms, { ...options, sourceLevel })
 
     const out = new WebGLRenderTarget(width, height, { type: FloatType, depthBuffer: false })
     const reconstruct = new ShaderMaterial({
         uniforms: { source: { value: coarse.texture }, invSize: { value: new Vector2(1 / coarse.width, 1 / coarse.height) } },
         vertexShader: 'void main() { gl_Position = vec4(position, 1.0); }',
         fragmentShader: `uniform sampler2D source; uniform vec2 invSize;
-            ${sampleBSplineGLSL}
-            void main() { gl_FragColor = sampleBSpline(source, gl_FragCoord.xy * 0.5, invSize); }`,
+            ${sampleBSplineGlsl}
+            ${sampleBSplineGlsl}
+            void main() { gl_FragColor = sampleBSpline(source, gl_FragCoord.xy / ${(2 ** sourceLevel).toFixed(1)}, invSize); }`,
     })
     Rendering.shaderMaterialPass(renderer, { target: out, shader: reconstruct, restoreGlobalState: true })
     const result = read(out)
     let peak = 0, diff = 0
     for (let i = 0; i < full.length; i++) { peak = Math.max(peak, Math.abs(full[i])); diff = Math.max(diff, Math.abs(full[i] - result[i])) }
     return { finestLevel, coarseSize: [coarse.width, coarse.height], error: diff / peak }
+}
+
+/** pyramidBloom's error for each invalid sourceLevel option, or null where it does not throw */
+window.bloomSourceLevelErrors = () => {
+    const texture = floatTexture(new Float32Array(16 * 16 * 4), 16, 16)
+    const terms = [{ sigma: 8, weight: 1 }]
+    return [{ sourceLevel: 1.5 }, { sourceLevel: -1 }, { sourceLevel: 1, border: 'normalize' }].map(options => {
+        try { pyramidBloom(renderer, new RenderTargetStore(), texture, terms, options); return null }
+        catch (e) { return String(e.message) }
+    })
 }
 
 window.ready = gl.getExtension('EXT_color_buffer_float') != null && gl.getExtension('OES_texture_float_linear') != null ? true : 'unsupported'
