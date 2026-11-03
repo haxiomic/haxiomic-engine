@@ -85,10 +85,12 @@ test('gaussianBlur and pyramidBloom put back the clear colour', async ({ page })
     expect(await page.evaluate(() => window.cases.blurClearColour())).toEqual({ afterBlur: ['00ff00', 0.5], afterBloom: ['00ff00', 0.5] })
 })
 
-test("every helper that restores its own state leaves an app's save intact", async ({ page }) => {
+const otherState = { target: 'other', viewport: [0, 0, 8, 8], clearColor: 'ff0000', clearAlpha: 1 }
+
+test("every helper that restores its own state puts it back and leaves an app's save intact", async ({ page }) => {
     const states = await page.evaluate(() => window.cases.helpersInsideSave())
     for (const helper of ['mipmaps', 'antiAliasedMipmaps', 'gaussianBlur', 'pyramidBloom', 'fluidStep', 'dualTargetResize']) {
-        expect(states[helper], helper).toEqual(knownState)
+        expect(states[helper], helper).toEqual({ afterHelper: otherState, afterRestore: knownState })
     }
 })
 
@@ -97,8 +99,13 @@ test("a cube target's face and mip level are put back by a helper, a restoring p
     expect(await page.evaluate(() => window.cases.cubeFaceAndMipLevel())).toEqual({ afterHelper: bound, afterPass: bound, afterRestore: bound, afterSnapshotRestore: bound })
 })
 
-test("restoreGlobalState() with no save of the app's puts back nothing, not a helper's state", async ({ page }) => {
-    // before, the helpers saved there too: a restore after one put back the state from the helper's start, and before
-    // any save it put back the canvas with a zero-width viewport
-    expect(await page.evaluate(() => window.cases.restoreWithoutSave())).toEqual({ beforeAnySave: knownState, afterHelperAndPass: "the pass's target" })
+test("restoreGlobalState() without a snapshot puts back the app's latest save, not a helper's; nothing before any save or after dispose()", async ({ page }) => {
+    // before, the mip chains, the fluid step and DualRenderTarget.resize saved there too: a restore after one put back
+    // the state from the helper's start; and before any save or after dispose() it bound the canvas with an empty viewport
+    expect(await page.evaluate(() => window.cases.restoreWithoutSave())).toEqual({
+        beforeAnySave: knownState,
+        afterHelperAndPass: "the pass's target",
+        afterHelperWithEarlierSave: otherState,
+        afterDispose: knownState,
+    })
 })

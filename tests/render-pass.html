@@ -241,7 +241,7 @@ window.cases = {
         return { afterBlur: [afterBlur.clearColor, afterBlur.clearAlpha], afterBloom: [afterBloom.clearColor, afterBloom.clearAlpha] }
     },
 
-    /** each helper that restores its own state, run inside an app's save, then the app's restoreGlobalState() */
+    /** each helper that restores its own state, run inside an app's save: the state after it, and after the app's restoreGlobalState() */
     helpersInsideSave() {
         const source = target()
         const helpers = {
@@ -258,6 +258,7 @@ window.cases = {
             dualTargetResize: () => new DualRenderTarget(renderer, 16, 16, {}).resize(32, 32),
         }
         const other = target()
+        const names = new Map([[other, 'other']])
         const states = {}
         for (const [name, helper] of Object.entries(helpers)) {
             setKnownState()
@@ -266,8 +267,9 @@ window.cases = {
             renderer.setViewport(0, 0, 8, 8)
             renderer.setClearColor(0xff0000, 1)
             helper()
+            const afterHelper = globalState(names)
             Rendering.restoreGlobalState(renderer)
-            states[name] = globalState(new Map([[other, 'other']]))
+            states[name] = { afterHelper, afterRestore: globalState(names) }
         }
         return states
     },
@@ -293,18 +295,38 @@ window.cases = {
         return { afterHelper, afterPass, afterRestore, afterSnapshotRestore }
     },
 
-    /** restoreGlobalState() with no save of the app's: before any save; and after a helper, then a pass that doesn't restore */
+    /**
+     * restoreGlobalState() with no save of the app's for what it just did: before any save; after a helper, then a pass
+     * that doesn't restore; after a helper, with an earlier save of other state; after dispose()
+     */
     restoreWithoutSave() {
+        const t = target(), other = target()
+        const names = new Map([[t, 'the pass\'s target'], [other, 'other']])
+        const mipmaps = () => generateBlurredMipmaps(renderer, { target: new WebGLRenderTarget(SIZE, SIZE, { minFilter: LinearMipmapLinearFilter }), blurKernel_heightFraction: 1 / 16 })
         setKnownState()
         Rendering.restoreGlobalState(renderer)
-        const beforeAnySave = globalState()
-        const t = target()
+        const beforeAnySave = globalState(names)
+
         setKnownState()
-        generateBlurredMipmaps(renderer, { target: new WebGLRenderTarget(SIZE, SIZE, { minFilter: LinearMipmapLinearFilter }) })
+        mipmaps()
         Rendering.renderPass(renderer, { target: t, scene: fill([1, 1, 1, 1]), camera: ortho, clearColor: false, clearDepth: false, restoreGlobalState: false })
         Rendering.restoreGlobalState(renderer)
-        const afterHelperAndPass = globalState(new Map([[t, 'the pass\'s target']])).target
-        return { beforeAnySave, afterHelperAndPass }
+        const afterHelperAndPass = globalState(names).target
+
+        renderer.setRenderTarget(other)
+        renderer.setViewport(0, 0, 8, 8)
+        renderer.setClearColor(0xff0000, 1)
+        Rendering.saveGlobalState(renderer)
+        setKnownState()
+        mipmaps()
+        Rendering.restoreGlobalState(renderer)
+        const afterHelperWithEarlierSave = globalState(names)
+
+        Rendering.dispose()
+        setKnownState()
+        Rendering.restoreGlobalState(renderer)
+        const afterDispose = globalState(names)
+        return { beforeAnySave, afterHelperAndPass, afterHelperWithEarlierSave, afterDispose }
     },
 }
 window.ready = true
