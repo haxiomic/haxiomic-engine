@@ -59,6 +59,9 @@ test.describe('gaussian blur & pyramid bloom', () => {
         for (const [i, e] of r.errors.entries()) expect(e, `level ${i + 1}`).toBeLessThan(0.03)
         expect(r.legacyDeterministic).toBe(true)
         expect(r.swizzleError).toBeLessThan(1e-3)
+        // without blurKernel_heightFraction both chains use its default, 1/16 (the anti-aliased one built a shader with
+        // NaN in it, which failed to compile)
+        expect(r.defaultKernel).toEqual({ legacy: true, antiAliased: true })
     })
 
     test('generatePyramidBloom is resolution independent', async ({ page }) => {

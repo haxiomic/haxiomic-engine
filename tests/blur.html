@@ -206,7 +206,8 @@ function mipBloomTerms(width, height, { blurKernel_heightFraction = 1 / 16, trun
 /**
  * generateBlurredMipmaps with and without antiAliased on a smooth input (where the default chain does not alias):
  * per level, max difference relative to that level's peak. Also returns whether the default chain is unchanged by
- * the option existing (bit-identical to a second default run), and swizzle '.a' support
+ * the option existing (bit-identical to a second default run), swizzle '.a' support, and whether each chain without
+ * `blurKernel_heightFraction` is the same as with its default, 1/16 (bit-identical)
  */
 window.antiAliasedMipsParity = () => {
     const size = 256
@@ -244,10 +245,14 @@ window.antiAliasedMipsParity = () => {
     // '.a' → vec4(a): every channel holds the blurred alpha, half the red channel here
     let swizzleError = 0
     for (let j = 0; j < swizzled[0].length; j++) swizzleError = Math.max(swizzleError, Math.abs(swizzled[0][j] - antiAliased[0][j - (j % 4)] / 2))
+    // the kernel left out, as an untyped caller might
+    const same = (a, b) => a.every((l, i) => l.every((v, j) => v === b[i][j]))
+    const legacyDefaultKernel = levels({ blurKernel_heightFraction: undefined }), antiAliasedDefaultKernel = levels({ antiAliased: true, blurKernel_heightFraction: undefined })
     return {
         errors,
-        legacyDeterministic: legacy.every((l, i) => l.every((v, j) => v === legacyAgain[i][j])),
+        legacyDeterministic: same(legacy, legacyAgain),
         swizzleError: swizzleError / 2,
+        defaultKernel: { legacy: same(legacyDefaultKernel, legacy), antiAliased: same(antiAliasedDefaultKernel, antiAliased) },
     }
 }
 
