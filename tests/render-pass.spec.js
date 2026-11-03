@@ -49,3 +49,63 @@ test('with clearColor: false the colour is kept, a colour background too; with a
     expect(cleared.corner[3]).toBe(255)
     expect(cleared.backgroundKept).toBe(true)
 })
+
+const knownState = { target: null, viewport: [1, 2, 3, 4], clearColor: '00ff00', clearAlpha: 0.5 }
+
+test('saveGlobalState nests: a helper that saves and restores inside a save leaves the outer restore intact', async ({ page }) => {
+    // before, generateBlurredMipmaps saved into the same slot, and the outer restore put back the state it found
+    expect(await page.evaluate(() => window.cases.nestedSave())).toEqual(knownState)
+})
+
+test('restoring a snapshot puts back its state, even when a save inside it was never restored', async ({ page }) => {
+    expect(await page.evaluate(() => window.cases.unrestoredInnerSave())).toEqual(knownState)
+})
+
+test('passes inside a save leave it intact, restoring or not, throwing or not', async ({ page }) => {
+    expect(await page.evaluate(() => window.cases.passesInsideSave())).toEqual(knownState)
+})
+
+test('restoreGlobalState() without a snapshot puts back the latest save, each time it is called', async ({ page }) => {
+    // as before saves nested: restoring doesn't use a save up, and a save needn't be restored
+    const other = { target: 'other', viewport: [0, 0, 8, 8], clearColor: 'ff0000', clearAlpha: 1 }
+    expect(await page.evaluate(() => window.cases.latestSave())).toEqual({ first: other, second: other })
+})
+
+test('a snapshot keeps its state, whatever is saved after it', async ({ page }) => {
+    expect(await page.evaluate(() => window.cases.snapshotKept())).toEqual(knownState)
+})
+
+test("a helper that throws before its restore leaves an app's save as it was", async ({ page }) => {
+    // the engine's helpers take snapshots of their own, which they don't make the latest save
+    expect(await page.evaluate(() => window.cases.throwingHelperInsideSave())).toEqual({ threw: 'a pass threw', state: knownState })
+})
+
+test('gaussianBlur and pyramidBloom put back the clear colour', async ({ page }) => {
+    // their passes clear with shaderMaterialPass's default magenta
+    expect(await page.evaluate(() => window.cases.blurClearColour())).toEqual({ afterBlur: ['00ff00', 0.5], afterBloom: ['00ff00', 0.5] })
+})
+
+const otherState = { target: 'other', viewport: [0, 0, 8, 8], clearColor: 'ff0000', clearAlpha: 1 }
+
+test("every helper that restores its own state puts it back and leaves an app's save intact", async ({ page }) => {
+    const states = await page.evaluate(() => window.cases.helpersInsideSave())
+    for (const helper of ['mipmaps', 'antiAliasedMipmaps', 'gaussianBlur', 'pyramidBloom', 'fluidStep', 'dualTargetResize']) {
+        expect(states[helper], helper).toEqual({ afterHelper: otherState, afterRestore: knownState })
+    }
+})
+
+test("a cube target's face and mip level are put back by a helper, a restoring pass and a restore", async ({ page }) => {
+    const bound = [true, 3, 1]
+    expect(await page.evaluate(() => window.cases.cubeFaceAndMipLevel())).toEqual({ afterHelper: bound, afterPass: bound, afterRestore: bound, afterSnapshotRestore: bound })
+})
+
+test("restoreGlobalState() without a snapshot puts back the app's latest save, not a helper's; nothing before any save or after dispose()", async ({ page }) => {
+    // before, the mip chains, the fluid step and DualRenderTarget.resize saved there too: a restore after one put back
+    // the state from the helper's start; and before any save or after dispose() it bound the canvas with an empty viewport
+    expect(await page.evaluate(() => window.cases.restoreWithoutSave())).toEqual({
+        beforeAnySave: knownState,
+        afterHelperAndPass: "the pass's target",
+        afterHelperWithEarlierSave: otherState,
+        afterDispose: knownState,
+    })
+})
