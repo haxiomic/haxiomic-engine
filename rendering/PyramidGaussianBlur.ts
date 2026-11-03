@@ -68,7 +68,7 @@ export function pyramidGaussianBlur(
 	}
 
 	const plan = planPyramidBlur(sigma, { minCoreSigma: options.minCoreSigma });
-	const savedState = options.restoreGlobalState !== false ? Rendering.saveGlobalState(renderer) : null;
+	const savedState = options.restoreGlobalState !== false ? Rendering.snapshotGlobalState(renderer) : null;
 
 	const clamp = wrapMode === 'clamp';
 	const normalize = clamp && options.border === 'normalize';

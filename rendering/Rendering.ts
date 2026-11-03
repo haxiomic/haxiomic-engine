@@ -9,12 +9,10 @@ import { isObjectWidthMaterial, ObjectUtils, ObjectWidthMaterial } from "../util
 export namespace Rendering {
 
 	/**
-	 * The renderer state `saveGlobalState()` records: the render target with its cube face and mip level, the viewport
-	 * and the clear colour. Valid until it is restored, or a snapshot saved before it is
+	 * Renderer state for `restoreGlobalState()` to put back: the render target with its cube face and mip level, the
+	 * viewport and the clear colour
 	 */
 	export type GlobalStateSnapshot = {
-		/** Its place in the stack of saved states: how many unrestored saves were open when it was taken */
-		readonly depth: number,
 		renderTarget: WebGLRenderTarget | null,
 		activeCubeFace: number,
 		activeMipmapLevel: number,
@@ -23,60 +21,58 @@ export namespace Rendering {
 		clearAlpha: number,
 	}
 
-	// Saved states, outermost first. Snapshots are reused, so a save allocates only the first time a depth is reached
-	const _savedStates: GlobalStateSnapshot[] = [];
-	let _savedDepth = 0;
+	function newSnapshot(): GlobalStateSnapshot {
+		return { renderTarget: null, activeCubeFace: 0, activeMipmapLevel: 0, viewport: new Vector4(), clearColor: new Color(), clearAlpha: 0 };
+	}
+
+	function captureGlobalState(renderer: WebGLRenderer, snapshot: GlobalStateSnapshot): GlobalStateSnapshot {
+		snapshot.renderTarget = renderer.getRenderTarget();
+		snapshot.activeCubeFace = renderer.getActiveCubeFace();
+		snapshot.activeMipmapLevel = renderer.getActiveMipmapLevel();
+		renderer.getViewport(snapshot.viewport);
+		renderer.getClearColor(snapshot.clearColor);
+		snapshot.clearAlpha = renderer.getClearAlpha();
+		return snapshot;
+	}
+
+	/** The latest `saveGlobalState()`: what `restoreGlobalState()` puts back when not given a snapshot */
+	let _latestSave: GlobalStateSnapshot | null = null;
 
 	const SavedMaterialSymbol = Symbol('SavedMaterial');
 
 	/**
-	 * Saves the renderer's render target (with its cube face and mip level), viewport and clear colour for
-	 * `restoreGlobalState()`. Saves nest: each gets its own snapshot, so code between a save and its restore may save and
-	 * restore too. Returns the snapshot: pass it to `restoreGlobalState()` to put back this save's state even when an
-	 * inner save was never restored
+	 * Saves the renderer's render target (with its cube face and mip level), viewport and clear colour, for
+	 * `restoreGlobalState()` to put back, and returns them.
+	 *
+	 * `restoreGlobalState()` without a snapshot puts back the latest save, as many times as it's called, and a save
+	 * needn't be restored. To nest saves, keep the snapshot and pass it to `restoreGlobalState()`: it puts back exactly
+	 * this state, whatever was saved since. Nothing needs releasing; a snapshot never restored is garbage
 	 */
 	export function saveGlobalState(renderer: WebGLRenderer): GlobalStateSnapshot {
-		let state = _savedStates[_savedDepth];
-		if (state === undefined) {
-			state = {
-				depth: _savedDepth,
-				renderTarget: null,
-				activeCubeFace: 0,
-				activeMipmapLevel: 0,
-				viewport: new Vector4(),
-				clearColor: new Color(),
-				clearAlpha: 0,
-			};
-			_savedStates[_savedDepth] = state;
-		}
-		_savedDepth++;
-		state.renderTarget = renderer.getRenderTarget();
-		state.activeCubeFace = renderer.getActiveCubeFace();
-		state.activeMipmapLevel = renderer.getActiveMipmapLevel();
-		renderer.getViewport(state.viewport);
-		renderer.getClearColor(state.clearColor);
-		state.clearAlpha = renderer.getClearAlpha();
-		return state;
+		return _latestSave = snapshotGlobalState(renderer);
 	}
 
 	/**
-	 * Puts back a state `saveGlobalState()` saved: `snapshot`, or by default the latest save not yet restored (with none
-	 * open, the last outermost save again, as before saves nested). Restoring a snapshot also drops the saves made after
-	 * it that were never restored (as when a throw skipped their restore)
+	 * The state `saveGlobalState()` saves, without making it the latest save: for code that restores its own snapshot, so
+	 * it leaves a caller's `saveGlobalState()` as it was (the engine's passes and helpers use this)
 	 */
-	export function restoreGlobalState(renderer: WebGLRenderer, snapshot: GlobalStateSnapshot | undefined = _savedStates[Math.max(_savedDepth - 1, 0)]) {
-		if (snapshot === undefined) return;
+	export function snapshotGlobalState(renderer: WebGLRenderer): GlobalStateSnapshot {
+		return captureGlobalState(renderer, newSnapshot());
+	}
+
+	/** Puts back `snapshot`, or without one the latest `saveGlobalState()` (nothing before any save) */
+	export function restoreGlobalState(renderer: WebGLRenderer, snapshot: GlobalStateSnapshot | null = _latestSave) {
+		if (snapshot === null) return;
 		renderer.setRenderTarget(snapshot.renderTarget, snapshot.activeCubeFace, snapshot.activeMipmapLevel);
 		renderer.setViewport(snapshot.viewport);
 		renderer.setClearColor(snapshot.clearColor, snapshot.clearAlpha);
-		releaseGlobalState(snapshot);
 	}
 
-	/** Drops `snapshot` and the saves made after it, without putting back their state */
-	function releaseGlobalState(snapshot: GlobalStateSnapshot) {
-		// min: a snapshot an outer restore already dropped must not bring the saves after it back
-		_savedDepth = Math.min(_savedDepth, snapshot.depth);
-	}
+	// renderPass's own snapshots, one per nesting depth (a pass may run inside another's render()). Only renderPass uses
+	// them, and it puts the depth back in a finally, so it's 0 again after the outermost pass however passes end. Reused:
+	// a pass allocates only the first time a depth is reached
+	const _passStates: GlobalStateSnapshot[] = [];
+	let _passDepth = 0;
 
 	export type RenderPassOptions = {
 		scene: Mesh | Scene,
@@ -157,13 +153,14 @@ export namespace Rendering {
 	 * override materials) is put back after; the render target, viewport and clear colour only with `restoreGlobalState`
 	 */
 	export function renderPass(renderer: WebGLRenderer, options: RenderPassOptions) {
-		// this pass's own snapshot (a pass may run inside another's render(), or between a save and its restore),
-		// dropped however the pass ends
-		const saved = saveGlobalState(renderer);
+		const depth = _passDepth;
+		const saved = _passStates[depth] ?? (_passStates[depth] = newSnapshot());
+		_passDepth = depth + 1;
 		try {
-			renderPassFrom(saved, renderer, options);
+			renderPassFrom(captureGlobalState(renderer, saved), renderer, options);
 		} finally {
-			releaseGlobalState(saved);
+			_passDepth = depth;
+			saved.renderTarget = null; // don't keep the target alive
 		}
 	}
 
@@ -615,9 +612,8 @@ export namespace Rendering {
 			delete copyMaterials[key];
 		}
 
-		// drop the saved states (and the render targets they hold)
-		_savedStates.length = 0;
-		_savedDepth = 0;
+		_latestSave = null;
+		_passStates.length = 0;
 	}
 
 }

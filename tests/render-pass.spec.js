@@ -57,12 +57,27 @@ test('saveGlobalState nests: a helper that saves and restores inside a save leav
     expect(await page.evaluate(() => window.cases.nestedSave())).toEqual(knownState)
 })
 
-test('restoring a snapshot drops the saves after it that were never restored', async ({ page }) => {
+test('restoring a snapshot puts back its state, even when a save inside it was never restored', async ({ page }) => {
     expect(await page.evaluate(() => window.cases.unrestoredInnerSave())).toEqual(knownState)
 })
 
 test('passes inside a save leave it intact, restoring or not, throwing or not', async ({ page }) => {
     expect(await page.evaluate(() => window.cases.passesInsideSave())).toEqual(knownState)
+})
+
+test('restoreGlobalState() without a snapshot puts back the latest save, each time it is called', async ({ page }) => {
+    // as before saves nested: restoring doesn't use a save up, and a save needn't be restored
+    const other = { target: 'other', viewport: [0, 0, 8, 8], clearColor: 'ff0000', clearAlpha: 1 }
+    expect(await page.evaluate(() => window.cases.latestSave())).toEqual({ first: other, second: other })
+})
+
+test('a snapshot keeps its state, whatever is saved after it', async ({ page }) => {
+    expect(await page.evaluate(() => window.cases.snapshotKept())).toEqual(knownState)
+})
+
+test("a helper that throws before its restore leaves an app's save as it was", async ({ page }) => {
+    // the engine's helpers take snapshots of their own, which they don't make the latest save
+    expect(await page.evaluate(() => window.cases.throwingHelperInsideSave())).toEqual({ threw: 'a pass threw', state: knownState })
 })
 
 test('gaussianBlur and pyramidBloom put back the clear colour', async ({ page }) => {

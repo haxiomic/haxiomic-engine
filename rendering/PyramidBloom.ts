@@ -169,7 +169,7 @@ export function pyramidBloom(
 	// levels below from here on count from the source
 	const plan = planPyramidBloom(terms, options.minCoreSigma ?? preset.minCoreSigma, sourceLevel)
 		.map(p => ({ ...p, level: p.level - sourceLevel }));
-	const savedState = options.restoreGlobalState !== false ? Rendering.saveGlobalState(renderer) : null;
+	const savedState = options.restoreGlobalState !== false ? Rendering.snapshotGlobalState(renderer) : null;
 	const maxLevel = Math.max(0, ...plan.map(p => p.level));
 
 	// downsample chain; levels[k] = { texture, width, height } (level 0 is the unpadded source)

@@ -146,7 +146,7 @@ export class FluidSimulation {
         applyForces: (velocityTarget: WebGLRenderTarget) => void,
         applyColor: (colorTarget: WebGLRenderTarget) => void
     ): void {
-        const savedState = Rendering.saveGlobalState(this.renderer);
+        const savedState = Rendering.snapshotGlobalState(this.renderer);
 
         // resize simulation textures if required
         if (this.simulationWidth !== int32(this.width * this.simulationTextureScale)) {

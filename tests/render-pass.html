@@ -175,6 +175,58 @@ window.cases = {
         return globalState(new Map([[t, 'the passes\' target']]))
     },
 
+    /** restoreGlobalState() without a snapshot, twice, after two saves (the second inside the first): what each puts back */
+    latestSave() {
+        setKnownState()
+        Rendering.saveGlobalState(renderer)
+        const other = target()
+        renderer.setRenderTarget(other)
+        renderer.setViewport(0, 0, 8, 8)
+        renderer.setClearColor(0xff0000, 1)
+        Rendering.saveGlobalState(renderer)
+        const names = new Map([[other, 'other']])
+        renderer.setRenderTarget(null)
+        Rendering.restoreGlobalState(renderer)
+        const first = globalState(names)
+        renderer.setRenderTarget(null)
+        Rendering.restoreGlobalState(renderer)
+        return { first, second: globalState(names) }
+    },
+
+    /** a snapshot restored after another state has been saved and restored */
+    snapshotKept() {
+        setKnownState()
+        const kept = Rendering.saveGlobalState(renderer)
+        Rendering.restoreGlobalState(renderer, kept)
+        const other = target()
+        renderer.setRenderTarget(other)
+        renderer.setViewport(0, 0, 8, 8)
+        renderer.setClearColor(0xff0000, 1)
+        Rendering.restoreGlobalState(renderer, Rendering.saveGlobalState(renderer))
+        Rendering.restoreGlobalState(renderer, kept)
+        return globalState(new Map([[other, 'other']]))
+    },
+
+    /** gaussianBlur() throwing after its snapshot, before its restore, inside a save restored without its snapshot */
+    throwingHelperInsideSave() {
+        setKnownState()
+        Rendering.saveGlobalState(renderer)
+        const other = target()
+        renderer.setRenderTarget(other)
+        const shaderMaterialPass = Rendering.shaderMaterialPass
+        Rendering.shaderMaterialPass = () => { throw new Error('a pass threw') }
+        let threw = null
+        try {
+            gaussianBlur(renderer, new RenderTargetStore(), other.texture, 9)
+        } catch (e) {
+            threw = e.message
+        } finally {
+            Rendering.shaderMaterialPass = shaderMaterialPass
+        }
+        Rendering.restoreGlobalState(renderer)
+        return { threw, state: globalState(new Map([[other, 'other']])) }
+    },
+
     /** the clear colour after gaussianBlur() and pyramidBloom(), which restore global state by default */
     blurClearColour() {
         const source = target()

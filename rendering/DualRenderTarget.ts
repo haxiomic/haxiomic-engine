@@ -40,7 +40,7 @@ export class DualRenderTarget {
         var bNew = new WebGLRenderTarget(newWidth, newHeight, this.options);
 
         // copy content to new texture (following whatever filtering params the textures use)
-        const savedState = Rendering.saveGlobalState(this.renderer);
+        const savedState = Rendering.snapshotGlobalState(this.renderer);
         Rendering.blit(this.renderer, {
             restoreGlobalState: false,
             source: this.a.texture,

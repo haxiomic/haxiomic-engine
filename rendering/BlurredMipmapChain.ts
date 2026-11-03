@@ -60,7 +60,7 @@ export function generateBlurredMipmaps(
 
     const gl = renderer.getContext();
 
-    const savedState = restoreGlobalState ? Rendering.saveGlobalState(renderer) : null;
+    const savedState = restoreGlobalState ? Rendering.snapshotGlobalState(renderer) : null;
 
     const sourceTexture = target.texture;
     let width = target.width;
@@ -229,7 +229,7 @@ function generateAntiAliasedMipmaps(renderer: WebGLRenderer, options: AntiAliase
 		wrapT: target.texture.wrapT,
 	};
 
-	const savedState = restoreGlobalState ? Rendering.saveGlobalState(renderer) : null;
+	const savedState = restoreGlobalState ? Rendering.snapshotGlobalState(renderer) : null;
 
 	let width = target.width, height = target.height;
 	for (let i = 1; i <= top; i++) {
