@@ -71,7 +71,9 @@ export namespace Rendering {
 		/**
 		 * If provided the target will be cleared with this color before the scene draws
 		 * Otherwise its colour is kept: a colour `scene.background`, which three clears with whatever `autoClear` says, is
-		 * taken off the scene for the call (a texture background is drawn, as any object)
+		 * taken off the scene for the call (a texture background is drawn, as any object). Renders of the scene made inside
+		 * the call (three's `Reflector`, `Refractor` and `Water`, and glass's transmission pass) see no background either,
+		 * as if the app had set `scene.background = null` around the pass
 		 *
 		 * A clear covers the whole target, whatever `viewport` says: only a scissor test limits it (`target.scissorTest`,
 		 * or the renderer's for the canvas), and the pass leaves that as it finds it
