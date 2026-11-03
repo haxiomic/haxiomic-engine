@@ -6,8 +6,8 @@ import { test, expect } from '@playwright/test'
 
 import { Texture } from 'three';
 import { BloomMipmapsMaterial } from '../dist/materials/BloomMipmapsMaterial.js';
-import { blurredMipmapTopLevel } from '../dist/rendering/BlurredMipmapChain.js';
-import { mipmapCount } from '../dist/math/Math.js';
+import { bloomLodRange } from '../dist/rendering/BloomAccumulation.js';
+import { blurredMipmapTopLevel, mipmapCount } from '../dist/math/Math.js';
 
 /** A render-target-like texture with an allocated mip chain, as initMipmapArray makes. */
 function chain(width: number, height: number) {
@@ -61,6 +61,16 @@ test('default sum is unchanged where the chain reaches every allocated level', (
         expect(material.uniforms.maxLod!.value).toBe(mipmapCount(w, h) - 1);
         expect(glsl).toBe(previousAccumulation(1, mipmapCount(w, h) - 1, -0.476));
     }
+});
+
+test('bloomLodRange stops one past the last rendered level', () => {
+    // as BloomMipmapsMaterial and bloomAccumulationGlsl() users read it
+    expect(bloomLodRange(chain(3840, 2160), 1)).toEqual({ minLod: 1, maxLod: 11 });
+    expect(bloomLodRange(chain(1600, 1000), 1)).toEqual({ minLod: 1, maxLod: 10 });
+    expect(bloomLodRange(chain(4096, 512), 1)).toEqual({ minLod: 1, maxLod: 10 });
+    expect(bloomLodRange(chain(512, 4096), 1)).toEqual({ minLod: 1, maxLod: 10 });
+    expect(bloomLodRange(chain(1, 1), 1)).toEqual({ minLod: 0, maxLod: 0 });
+    expect(bloomLodRange(null, 1)).toEqual({ minLod: 0, maxLod: 0 });
 });
 
 test('a wide source never reads levels the chain does not render', () => {

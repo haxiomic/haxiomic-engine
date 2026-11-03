@@ -1,0 +1,279 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Display transform fixture</title>
+
+<script type="importmap">
+{ "imports": { "three": "/node_modules/three/build/three.module.js" } }
+</script>
+<script type="module">
+import { ACESFilmicToneMapping, AgXToneMapping, DataTexture, FloatType, LinearFilter, LinearMipmapLinearFilter, NearestFilter, NeutralToneMapping, NoToneMapping, RGBAFormat, SRGBColorSpace, ShaderMaterial, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
+import { initMipmapArray } from '/dist/rendering/RenderTargetStore.js'
+import { generateBlurredMipmaps } from '/dist/rendering/BlurredMipmapChain.js'
+import { BloomMipmapsMaterial } from '/dist/materials/BloomMipmapsMaterial.js'
+import { HdrOutputMaterial } from '/dist/materials/HdrOutputMaterial.js'
+import { Rendering } from '/dist/rendering/Rendering.js'
+import { displayTransformGlsl, premultipliedAlphaGlsl } from '/dist/rendering/DisplayTransform.js'
+import { bloomAccumulationGlsl, bloomAccumulationDynamicGlsl, bloomLodRange } from '/dist/rendering/BloomAccumulation.js'
+
+const SIZE = 64
+const canvas = document.createElement('canvas')
+canvas.width = canvas.height = SIZE
+// alpha, premultiplied: the canvas setup the display transform targets
+const renderer = new WebGLRenderer({ canvas, alpha: true })
+renderer.autoClear = false
+const gl = renderer.getContext()
+
+const TONE_MAPPINGS = { none: NoToneMapping, aces: ACESFilmicToneMapping, agx: AgXToneMapping, neutral: NeutralToneMapping }
+
+/** A SIZE² float texture, one premultiplied RGBA value per 8×8 cell, read with nearest filtering */
+function cells(values) {
+    const data = new Float32Array(SIZE * SIZE * 4)
+    for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+        const v = values[((y >> 3) * 8 + (x >> 3)) % values.length]
+        data.set(v, (y * SIZE + x) * 4)
+    }
+    const t = new DataTexture(data, SIZE, SIZE, RGBAFormat, FloatType)
+    t.minFilter = t.magFilter = NearestFilter
+    t.needsUpdate = true
+    return t
+}
+
+/** The same values as a mipmapped float target with a blurred chain, for bloom with real mip levels */
+function chain(values) {
+    const target = new WebGLRenderTarget(SIZE, SIZE, { type: FloatType, minFilter: LinearMipmapLinearFilter, magFilter: LinearFilter, depthBuffer: false })
+    initMipmapArray(target)
+    Rendering.blit(renderer, { source: cells(values), target, restoreGlobalState: true })
+    generateBlurredMipmaps(renderer, { target, blurKernel_heightFraction: 1 / 16 })
+    return target
+}
+
+/**
+ * Float output of a pass with tone mapping and the sRGB encode applied, at full precision: three applies both only on
+ * the canvas or into an XR target, so the target is flagged as one.
+ */
+function encodedFloatTarget() {
+    const target = new WebGLRenderTarget(SIZE, SIZE, { type: FloatType, depthBuffer: false })
+    target.texture.colorSpace = SRGBColorSpace
+    target.isXRRenderTarget = true
+    return target
+}
+
+function runFloat(shader, toneMapping) {
+    const target = encodedFloatTarget()
+    Rendering.shaderMaterialPass(renderer, { shader, target, restoreGlobalState: true, toneMapping: TONE_MAPPINGS[toneMapping], clearColor: { rgb: 0, alpha: 0 } })
+    const out = new Float32Array(SIZE * SIZE * 4)
+    renderer.readRenderTargetPixels(target, 0, 0, SIZE, SIZE, out)
+    target.dispose()
+    return out
+}
+
+function runCanvas(shader, toneMapping) {
+    Rendering.shaderMaterialPass(renderer, { shader, target: null, restoreGlobalState: true, toneMapping: TONE_MAPPINGS[toneMapping], clearColor: { rgb: 0, alpha: 0 } })
+    const out = new Uint8Array(SIZE * SIZE * 4)
+    gl.readPixels(0, 0, SIZE, SIZE, gl.RGBA, gl.UNSIGNED_BYTE, out)
+    return out
+}
+
+/** Value of each 8×8 cell (its centre texel) */
+const cellValues = (pixels, n) => Array.from({ length: n }, (_, i) => {
+    const x = (i % 8) * 8 + 4, y = (i >> 3) * 8 + 4
+    return Array.from(pixels.slice((y * SIZE + x) * 4, (y * SIZE + x) * 4 + 4))
+})
+
+/** Indices where two outputs differ in any bit, over the given cells (all when cells is null) */
+function bitDifferences(a, b, cellsOf = null) {
+    const diffs = []
+    for (let i = 0; i < a.length; i++) {
+        const cell = ((Math.floor(i / 4 / SIZE) >> 3) * 8 + ((i / 4 % SIZE) >> 3))
+        if (cellsOf && !cellsOf(cell)) continue
+        if (!Object.is(a[i], b[i])) diffs.push(i)
+    }
+    return diffs
+}
+
+const bloomMaterial = (options, values, { strength = 0.25, grade = false } = {}) => {
+    const m = new BloomMipmapsMaterial({ colorGrading: grade, ...options })
+    const t = chain(values)
+    m.uniforms.source.value = t.texture
+    m.uniforms.bloomStrength.value = strength
+    if (grade) {
+        m.uniforms.colorGradeContrast.value = 0.2
+        m.uniforms.colorGradeSaturation.value = -0.1
+        m.uniforms.colorGradeExponent.value = 0.1
+    }
+    return m
+}
+
+const OPAQUE = [
+    [0.2, 0.5, 0.8, 1], [0, 0, 0, 1], [1, 1, 1, 1], [3, 0.5, 0.01, 1], [0.04, 0.003, 0.7, 1],
+    [0.6, 0.6, 0.6, 1.5], [12, 6, 2, 1], [0.0001, 0.2, 0.0, 1],
+]
+
+/**
+ * Opaque pixels are bit-identical to the transform of the stored colour (`premultipliedSource: false`, the previous
+ * shader path): every tone mapping, with and without the colour grade, baked and dynamic accumulation, smooth levels,
+ * at float precision and on the 8-bit canvas. Returns the number of differing values per case.
+ */
+window.opaqueBitIdentical = () => {
+    const rows = []
+    for (const toneMapping of Object.keys(TONE_MAPPINGS)) for (const grade of [false, true])
+    for (const bakeUniforms of [true, false]) for (const smoothLevels of [0, 2]) {
+        const options = { bakeUniforms, smoothLevels }
+        const fixed = bloomMaterial({ ...options, premultipliedSource: true }, OPAQUE, { grade })
+        const asStored = bloomMaterial({ ...options, premultipliedSource: false }, OPAQUE, { grade })
+        rows.push({
+            toneMapping, grade, bakeUniforms, smoothLevels,
+            float: bitDifferences(runFloat(fixed, toneMapping), runFloat(asStored, toneMapping)).length,
+            canvas: bitDifferences(runCanvas(fixed, toneMapping), runCanvas(asStored, toneMapping)).length,
+        })
+    }
+    return rows
+}
+
+/** The float readback really carries the transform: tone mappings differ from each other and from the stored values */
+window.floatPathTransforms = () => {
+    const m = bloomMaterial({}, OPAQUE, { strength: 0 })
+    const none = runFloat(m, 'none'), acesOut = runFloat(m, 'aces')
+    const stored = cells(OPAQUE).image.data
+    // cell 0 is (0.2, 0.5, 0.8): encoded without tone mapping it is (0.4845, 0.7354, 0.9063)
+    return {
+        tonemapped: bitDifferences(none, acesOut).length > 0,
+        encoded: bitDifferences(none, stored).length > 0,
+        cell0: cellValues(none, 1)[0],
+    }
+}
+
+/**
+ * Bloom is light over the whole pixel: a glow from a bright opaque cell over faint translucent cells (alpha 0.05)
+ * keeps its brightness. Returns, per translucent cell, the ratio of the luminance to the stored-colour transform's
+ * (which shows the glow at full strength), on the canvas
+ */
+window.glowOverTranslucent = () => {
+    const values = [[20, 20, 20, 1], ...Array(15).fill([0.005, 0.004, 0.003, 0.05])]
+    const fixed = bloomMaterial({}, values, { strength: 0.3 })
+    const asStored = bloomMaterial({ premultipliedSource: false }, values, { strength: 0.3 })
+    const a = cellValues(runCanvas(fixed, 'aces'), 16), b = cellValues(runCanvas(asStored, 'aces'), 16)
+    const luma = p => p[0] + p[1] + p[2]
+    return a.slice(1).map((p, i) => luma(b[i + 1]) > 6 ? luma(p) / luma(b[i + 1]) : null).filter(r => r !== null)
+}
+
+/** A bright colour at a tiny alpha stays finite through the transform (no overflow to infinity or NaN) */
+window.finiteAtTinyAlpha = () => {
+    const values = [[100, 50, 25, 1e-6], [60000, 1, 1, 0.001], [1e30, 0, 0, 1e-20]]
+    const out = runFloat(bloomMaterial({}, values, { strength: 0 }), 'aces')
+    return cellValues(out, 3).every(p => p.every(Number.isFinite))
+}
+
+/** With material.premultipliedAlpha (three premultiplies the output), the stored colour is transformed as it is */
+window.premultipliedAlphaMaterialUnchanged = () => {
+    const values = [...OPAQUE, [0.1, 0.25, 0.4, 0.5], [0.02, 0.01, 0.3, 0.3], [0.3, 0.6, 0.9, 0]]
+    const make = premultipliedSource => { const m = bloomMaterial({ premultipliedSource }, values, { strength: 0.25 }); m.premultipliedAlpha = true; m.transparent = true; return m }
+    return bitDifferences(runFloat(make(true), 'aces'), runFloat(make(false), 'aces')).length
+}
+
+/** Pixels with alpha 0 (light without coverage, or data with an unused alpha) are transformed as stored */
+window.zeroAlphaUnchanged = () => {
+    const values = [[0.3, 0.6, 0.9, 0], [4, 0, 0, 0], [0, 0, 0, 0]]
+    const fixed = bloomMaterial({ premultipliedSource: true }, values, { strength: 0 })
+    const asStored = bloomMaterial({ premultipliedSource: false }, values, { strength: 0 })
+    return bitDifferences(runFloat(fixed, 'aces'), runFloat(asStored, 'aces')).length
+}
+
+/**
+ * A flat colour c at coverage a, stored premultiplied: through the bloom pass (no bloom light), a custom shader using
+ * displayTransformGlsl, and HdrOutputMaterial at headroom 1, read from the canvas. Returns 0..255 values.
+ */
+window.partialCoverage = (c, a, toneMapping) => {
+    const premultiplied = [c[0] * a, c[1] * a, c[2] * a, a]
+    const bloom = bloomMaterial({}, [premultiplied], { strength: 0 })
+    const custom = new ShaderMaterial({
+        uniforms: { scene: { value: cells([premultiplied]) } },
+        vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }',
+        fragmentShader: `uniform sampler2D scene; varying vec2 vUv; ${displayTransformGlsl} ${premultipliedAlphaGlsl} ${displayTransformGlsl}
+            void main() { gl_FragColor = displayTransform(texture2D(scene, vUv)); }`,
+        depthTest: false, depthWrite: false,
+    })
+    const result = { bloom: cellValues(runCanvas(bloom, toneMapping), 1)[0], custom: cellValues(runCanvas(custom, toneMapping), 1)[0] }
+    if (toneMapping === 'aces') {
+        const hdr = new HdrOutputMaterial({ source: cells([premultiplied]), toneMapping: ACESFilmicToneMapping, headroom: 1 })
+        result.hdr = cellValues(runCanvas(hdr, 'none'), 1)[0]
+    }
+    return result
+}
+
+/** HdrOutputMaterial: opaque pixels bit-identical to `premultipliedSource: false`, both curves, two headrooms */
+window.hdrOpaqueBitIdentical = () => {
+    const rows = []
+    for (const toneMapping of [ACESFilmicToneMapping, NeutralToneMapping]) for (const headroom of [1, 3]) {
+        const make = premultipliedSource => new HdrOutputMaterial({ source: cells(OPAQUE), toneMapping, headroom, premultipliedSource })
+        rows.push({ toneMapping, headroom, float: bitDifferences(runFloat(make(true), 'none'), runFloat(make(false), 'none')).length })
+    }
+    return rows
+}
+
+/**
+ * Rendering.blit: a raw copy returns the stored float values exactly; with a tone mapping and no option it still
+ * transforms the stored values (the previous behaviour); with `premultipliedSource` it un-premultiplies. Cells are
+ * [opaque, partial, zero alpha].
+ */
+window.blitContract = () => {
+    const values = [[0.2, 0.5, 0.8, 1], [0.1, 0.25, 0.4, 0.5], [0.3, 0.2, 0.1, 0]]
+    const source = cells(values)
+    const target = new WebGLRenderTarget(SIZE, SIZE, { type: FloatType, depthBuffer: false })
+    Rendering.blit(renderer, { source, target, restoreGlobalState: true })
+    const raw = new Float32Array(SIZE * SIZE * 4)
+    renderer.readRenderTargetPixels(target, 0, 0, SIZE, SIZE, raw)
+    const rawExact = bitDifferences(raw, source.image.data).length === 0
+    const viaBlit = (premultipliedSource) => {
+        Rendering.blit(renderer, { source, target: null, restoreGlobalState: true, applyOutputColorSpace: true, toneMapping: ACESFilmicToneMapping, premultipliedSource, clear: true })
+        const out = new Uint8Array(SIZE * SIZE * 4)
+        gl.readPixels(0, 0, SIZE, SIZE, gl.RGBA, gl.UNSIGNED_BYTE, out)
+        return cellValues(out, 3)
+    }
+    return { rawExact, asStored: viaBlit(undefined), premultiplied: viaBlit(true) }
+}
+
+/**
+ * bloomAccumulationGlsl and bloomAccumulationDynamicGlsl in a custom shader give the material's bloom term
+ * (strength 1 over a black base, no tone mapping, linear float target): max absolute difference.
+ */
+window.accumulationParity = () => {
+    const values = [[4, 1, 0.2, 1], [0, 0, 0, 1], [0.5, 2, 3, 1], [0, 0, 0, 0]]
+    const target = chain(values)
+    const black = cells([[0, 0, 0, 0]])
+    const linearRun = shader => {
+        const out = new WebGLRenderTarget(SIZE, SIZE, { type: FloatType, depthBuffer: false })
+        Rendering.shaderMaterialPass(renderer, { shader, target: out, restoreGlobalState: true, toneMapping: NoToneMapping, clearColor: { rgb: 0, alpha: 0 } })
+        const pixels = new Float32Array(SIZE * SIZE * 4)
+        renderer.readRenderTargetPixels(out, 0, 0, SIZE, SIZE, pixels)
+        out.dispose()
+        return pixels
+    }
+    const rows = []
+    for (const smoothLevels of [0, 2]) for (const bakeUniforms of [true, false]) {
+        const material = new BloomMipmapsMaterial({ smoothLevels, bakeUniforms })
+        material.uniforms.source.value = black
+        material.uniforms.mipmapSource.value = target.texture
+        material.uniforms.bloomStrength.value = 1
+        const { minLod, maxLod } = bloomLodRange(target.texture, 1)
+        const falloff = material.uniforms.bloomFalloff.value
+        const body = bakeUniforms
+            ? `${bloomAccumulationGlsl({ minLod, maxLod, falloff, smoothLevels })} void main() { gl_FragColor = bloomAccumulation(chain, vUv); }`
+            : `uniform float firstLod; uniform float endLod; uniform float falloff;
+               ${bloomAccumulationDynamicGlsl({ smoothLevels, name: 'sumLevels' })} void main() { gl_FragColor = sumLevels(chain, vUv, firstLod, endLod, falloff); }`
+        const custom = new ShaderMaterial({
+            uniforms: { chain: { value: target.texture }, firstLod: { value: minLod }, endLod: { value: maxLod }, falloff: { value: falloff } },
+            vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }',
+            fragmentShader: `uniform sampler2D chain; varying vec2 vUv; ${body}`,
+            depthTest: false, depthWrite: false,
+        })
+        const a = linearRun(material), b = linearRun(custom)
+        let diff = 0, peak = 0
+        for (let i = 0; i < a.length; i++) { diff = Math.max(diff, Math.abs(a[i] - b[i])); peak = Math.max(peak, Math.abs(a[i])) }
+        rows.push({ smoothLevels, bakeUniforms, diff, peak, levels: maxLod - minLod })
+    }
+    return rows
+}
+
+window.ready = renderer.extensions.has('EXT_color_buffer_float') && renderer.extensions.has('OES_texture_float_linear')
+</script>

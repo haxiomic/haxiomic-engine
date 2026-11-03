@@ -1,18 +1,32 @@
 import { Texture, Uniform } from "three";
-import { blurredMipmapTopLevel } from "../rendering/BlurredMipmapChain.js";
+import { bloomAccumulationDynamicStatements, bloomAccumulationStatements, bloomBSplineGlsl, bloomLodRange } from "../rendering/BloomAccumulation.js";
+import { displayTransformGlsl } from "../rendering/DisplayTransform.js";
 import { ShaderMaterial } from "./ShaderMaterial.js";
 
 /**
  * Blends mipmaps over level 0
- * 
+ *
  * Use with `generateBlurredMipmaps()` to create a blurred mipmap chain
- * 
+ *
  * **Requires minFilter set to `LINEAR_MIPMAP_LINEAR` filtering**
+ *
+ * For bloom that doesn't flicker on moving highlights, set `bloomSource` to `generatePyramidBloom()`'s result instead:
+ * `mipmapSource`, `bloomFalloff`, `minLod` and `maxLod` are then unused.
+ *
+ * The source is taken as premultiplied (what three renders into a target), so tone mapping, the output encoding and
+ * the colour grade apply to un-premultiplied colour, which is premultiplied again after, and the bloom is light added
+ * over the whole pixel, so a glow over a transparent area stays visible. Pixels whose source alpha is 0 or at least 1
+ * come out as they would without this; partially transparent ones keep their colour instead of brightening. Pass
+ * `premultipliedSource: false` to transform the stored colour as it is. With `material.premultipliedAlpha = true`
+ * three premultiplies the output itself, and the stored colour is transformed as it is. The accumulation is also available as GLSL to
+ * compose: see `bloomAccumulationGlsl()`.
  */
 export class BloomMipmapsMaterial extends ShaderMaterial<{
     source: Uniform<Texture | null>,
     /** Usually the same as source */
     mipmapSource: Uniform<Texture | null>,
+    /** Precomputed bloom (from `generatePyramidBloom()`); when set it replaces the mip accumulation */
+    bloomSource?: Uniform<Texture | null>,
     bloomStrength: Uniform<number>,
     bloomFalloff: Uniform<number>,
     minLod: Uniform<number>,
@@ -24,27 +38,44 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 }> {
 
     bakeUniforms: boolean;
+    readonly smoothLevels: number;
+    /** Whether tone mapping and encoding apply to un-premultiplied colour (constructor option) */
+    get premultipliedSource(): boolean { return this.defines.PREMULTIPLIED_SOURCE === 1; }
 
     constructor(options_?: {
         bakeUniforms?: boolean,
         /** Enable color grading (contrast, saturation, exponent adjustments) */
         colorGrading?: boolean,
+        /**
+         * Read the finest n mip levels with a cubic B-spline (4 fetches each) instead of bilinear, removing the shimmer
+         * a bilinear read of a coarse level leaves. Use 2 with `generateBlurredMipmaps({ antiAliased: true })`; costs
+         * ≈ 0.02 ms at 1080p. @default 0
+         */
+        smoothLevels?: number,
+        /**
+         * The source holds premultiplied alpha, as three's render targets do: tone mapping, the output encoding and
+         * the colour grade apply to un-premultiplied colour, premultiplied again after, with the bloom as added light.
+         * Pixels whose source alpha is 0 or at least 1 are unaffected. `false` transforms the stored colour as it is.
+         * @default true
+         */
+        premultipliedSource?: boolean,
     }) {
         const defaultOptions = {
             bakeUniforms: true,
             colorGrading: false,
+            smoothLevels: 0,
+            premultipliedSource: true,
         }
         let options = { ...defaultOptions, ...options_ };
+        const smoothLevels = Math.max(0, Math.floor(options.smoothLevels));
 
-        const dynamicBloomAccumulation = /*glsl*/`
-            for (float i = minLod; i < maxLod; i++) {
-                bloom += textureLod(mipmapSource, vUv, i) * pow(i, -bloomFalloff);
-            }`.replace(/\n/g, '\\\n');
-        
+        const dynamicBloomAccumulation = bloomAccumulationDynamicStatements(smoothLevels).replace(/\n/g, '\\\n');
+
         super({
             uniforms: {
                 source: new Uniform(null),
                 mipmapSource: new Uniform(null),
+                bloomSource: new Uniform(null),
                 bloomStrength: new Uniform(0.01),
                 bloomFalloff: new Uniform(-0.138),
                 minLod: new Uniform(1),
@@ -56,7 +87,9 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             },
             defines: {
                 BAKE_UNIFORMS: 0,
+                USE_BLOOM_SOURCE: 0,
                 COLOR_GRADING: options.colorGrading ? 1 : 0,
+                PREMULTIPLIED_SOURCE: options.premultipliedSource ? 1 : 0,
                 // escape newlines
                 BLOOM_ACCUMULATION: dynamicBloomAccumulation,
             },
@@ -71,6 +104,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             fragmentShader: /*glsl*/`
                 uniform sampler2D source;
                 uniform sampler2D mipmapSource;
+                uniform sampler2D bloomSource;
 
                 uniform float bloomStrength;
 
@@ -102,7 +136,12 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
                     return c;
                 }
                 #endif
-
+${smoothLevels > 0 ? bloomBSplineGlsl : ''}
+                #if COLOR_GRADING
+                #define DISPLAY_COLOR_GRADE
+                vec3 displayColorGrade(vec3 c) { return applyColorGrading(c); }
+                #endif
+${displayTransformGlsl}
                 varying vec2 vUv;
 
                 #include <common>
@@ -110,22 +149,41 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 
                 void main() {
                     // mix in lods
+                    #if USE_BLOOM_SOURCE
+                    // explicit lod: with bloomSource the source's mip levels are not generated, and a mipmapped
+                    // minFilter could otherwise blend in stale levels
+                    vec4 lod0 = textureLod(source, vUv, 0.0);
+                    #else
                     vec4 lod0 = texture2D(source, vUv);
+                    #endif
 
                     vec4 bloom = vec4(0.0);
-                    
+
+                    #if USE_BLOOM_SOURCE
+                    bloom = texture2D(bloomSource, vUv);
+                    #else
                     {
                         BLOOM_ACCUMULATION
                     }
+                    #endif
 
                     gl_FragColor = lod0 + bloom * bloomStrength;
 
-                    #include <tonemapping_fragment>
-                    #include <colorspace_fragment>
-
-                    #if COLOR_GRADING
-                    gl_FragColor.rgb = applyColorGrading(gl_FragColor.rgb);
+                    #if PREMULTIPLIED_SOURCE && !defined( PREMULTIPLIED_ALPHA )
+                    // a partially covered source: transform its colour, not the colour scaled by its coverage, and
+                    // add the bloom as light over the whole pixel (displayTransformEmissive)
+                    if (lod0.a > 0.0 && lod0.a < 1.0) {
+                        gl_FragColor.rgb = displayTransformEmissive(lod0, bloom.rgb * bloomStrength).rgb;
+                    } else
                     #endif
+                    {
+                        #include <tonemapping_fragment>
+                        #include <colorspace_fragment>
+
+                        #if COLOR_GRADING
+                        gl_FragColor.rgb = applyColorGrading(gl_FragColor.rgb);
+                        #endif
+                    }
 
                     #include <premultiplied_alpha_fragment>
                     #include <dithering_fragment>
@@ -136,6 +194,7 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
         });
 
         this.bakeUniforms = options.bakeUniforms ?? true;
+        this.smoothLevels = smoothLevels;
 
         let definesState = {
             bakeUniforms: false,
@@ -145,22 +204,19 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
         }
 
         this.onBeforeRender = () => {
+            const useBloomSource = this.uniforms.bloomSource?.value != null ? 1 : 0;
+            if (this.defines.USE_BLOOM_SOURCE !== useBloomSource) {
+                this.defines.USE_BLOOM_SOURCE = useBloomSource;
+                this.needsUpdate = true;
+            }
+
             // ensure there's always a mipmap source
             if (!this.uniforms.mipmapSource!.value) {
                 this.uniforms.mipmapSource!.value = this.uniforms.source.value;
             }
 
-            const mipmapSource = this.uniforms.mipmapSource!.value;
-            let mipmapCount: number = mipmapSource?.mipmaps?.length ?? 0;
-            let maxLod = Math.max(0, mipmapCount - 1);
-            // The chain is allocated down the longer side but rendered until the
-            // shorter reaches 1 pixel: never sum levels it did not write.
-            const image = mipmapSource?.image as { width?: number, height?: number } | undefined;
-            if (image?.width && image?.height) {
-                maxLod = Math.min(maxLod, blurredMipmapTopLevel(image.width, image.height) + 1);
-            }
+            const { minLod, maxLod } = bloomLodRange(this.uniforms.mipmapSource!.value, this.uniforms.minLod.value);
             this.uniforms.maxLod!.value = maxLod;
-            const minLod = Math.min(this.uniforms.minLod.value, maxLod);
 
             // check for state change
             let definesNeedUpdate = definesState.bakeUniforms !== this.bakeUniforms;
@@ -179,11 +235,12 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
             if (definesNeedUpdate) {
                 if (this.bakeUniforms) {
                     this.defines.BAKE_UNIFORMS = 1;
-                    this.defines.BLOOM_ACCUMULATION = getBloomAccumulationShaderOptimized({
+                    this.defines.BLOOM_ACCUMULATION = bloomAccumulationStatements({
                         minLod,
                         maxLod,
-                        bloomFalloff: this.uniforms.bloomFalloff.value,
-                    });
+                        falloff: this.uniforms.bloomFalloff.value,
+                        smoothLevels,
+                    }).replace(/\n/g, '\\\n');
                     this.defines.BLOOM_FALLOFF = this.uniforms.bloomFalloff.value.toFixed(3);
                     this.defines.MIN_LOD = minLod.toFixed(1);
                     this.defines.MAX_LOD = maxLod.toFixed(1);
@@ -202,94 +259,6 @@ export class BloomMipmapsMaterial extends ShaderMaterial<{
 
                 this.needsUpdate = true;
             }
-        }
-
-        function getBloomAccumulationShader(
-            { minLod, maxLod, bloomFalloff }: { minLod: number, maxLod: number, bloomFalloff: number }
-        ) {
-            let glsl = '';
-            for (let i = minLod; i < maxLod; i++) {
-                let multiplier = Math.pow(i, -bloomFalloff);
-                glsl += /*glsl*/`bloom += textureLod(mipmapSource, vUv, ${i.toFixed(1)}) * ${multiplier.toFixed(3)};\n`;
-            }
-            return glsl.replace(/\n/g, '\\\n');
-        }
-
-        /**
-         * Reduce textureLod calls by combining pairs of levels (trilinear filtering)
-         * Required LINEAR_MIPMAP_LINEAR filtering for this to work
-         */
-        function getBloomAccumulationShaderOptimized(
-            { minLod, maxLod, bloomFalloff }: { minLod: number, maxLod: number, bloomFalloff: number }
-        ): string {
-            let glsl = '';
-            const epsilon = 1e-6; // Small value to avoid log(0)/pow(0, negative)
-
-            // Loop over pairs of levels
-            let currentLod = minLod;
-            for (; currentLod < maxLod - 1; currentLod += 2) {
-                const lod1 = currentLod;
-                const lod2 = currentLod + 1.0;
-
-                // Calculate weights W1 and W2
-                // Handle lod = 0 carefully
-                const w1_base = Math.max(lod1, epsilon);
-                const w2_base = Math.max(lod2, epsilon); // lod2 is always >= 1 if minLod >= 0
-
-                let W1 = Math.pow(w1_base, -bloomFalloff);
-                const W2 = Math.pow(w2_base, -bloomFalloff);
-
-                // Correct W1 specifically for pow(0, 0) case if falloff is exactly 0
-                if (Math.abs(lod1) < epsilon && Math.abs(bloomFalloff) < epsilon) {
-                    W1 = 1.0;
-                }
-
-                const W_total = W1 + W2;
-
-                // Proceed only if the combined weight is significant
-                if (W_total > epsilon) {
-                    // Calculate fractional offset f = W2 / W_total
-                    const f = W2 / W_total;
-                    // Clamp f just in case of numerical instability, although unlikely here
-                    const clamped_f = Math.max(0.0, Math.min(1.0, f));
-
-                    // Calculate the LOD to sample at for trilinear blend
-                    const sampleLod = lod1 + clamped_f;
-
-                    // The correction factor K is the total weight
-                    const K = W_total;
-
-                    // Add GLSL line for this pair
-                    // Use higher precision for sampleLod and K
-                    glsl += /*glsl*/ `bloom += textureLod(mipmapSource, vUv, ${sampleLod.toFixed(5)}) * ${K.toFixed(5)};\n`;
-                }
-            }
-
-            // Handle the last level if the number of levels was odd
-            // This occurs if currentLod stopped exactly at maxLod - 1
-            if (currentLod < maxLod) { // Equivalent to checking currentLod == maxLod - 1
-                const lastLod = currentLod; // which is maxLod - 1
-
-                // Calculate weight for the last level
-                const W_last_base = Math.max(lastLod, epsilon);
-                let W_last = Math.pow(W_last_base, -bloomFalloff);
-
-                // Correct W_last specifically for pow(0, 0) case
-                 if (Math.abs(lastLod) < epsilon && Math.abs(bloomFalloff) < epsilon) {
-                    W_last = 1.0;
-                }
-
-
-                // Add GLSL line only if weight is significant
-                if (W_last > epsilon) {
-                     // Use original precision spec for consistency or update as needed
-                    glsl += /*glsl*/ `bloom += textureLod(mipmapSource, vUv, ${lastLod.toFixed(1)}) * ${W_last.toFixed(5)};\n`;
-                }
-
-            }
-
-            // Replace newlines for embedding if necessary (kept from original)
-            return glsl.replace(/\n/g, '\\\n');
         }
     }
 
