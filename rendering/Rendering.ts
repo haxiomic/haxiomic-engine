@@ -146,8 +146,9 @@ export namespace Rendering {
 	/**
 	 * Renders `scene` into `target`, as the options say. This should be used instead of `renderer.render()`
 	 *
-	 * What it changes on the renderer for the call (`autoClear`, tone mapping, the camera's layers,
-	 * override materials) is put back after; the render target, viewport and clear colour only with `restoreGlobalState`.
+	 * What it changes for the call (`autoClear`, tone mapping, the camera's layers, override materials, a colour
+	 * background taken off with `clearColor: false`, the target's own viewport) is put back after; the render target,
+	 * viewport and clear colour only with `restoreGlobalState`.
 	 * This holds when something in the pass throws, too, such as an override material function or a hook in `render()`
 	 */
 	export function renderPass(renderer: WebGLRenderer, options: RenderPassOptions) {
