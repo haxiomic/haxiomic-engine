@@ -220,7 +220,7 @@ function generateAntiAliasedMipmaps(renderer: WebGLRenderer, options: AntiAliase
 	const top = blurredMipmapTopLevel(target.width, target.height);
 	const merged = options.coreLinearSampling ?? true;
 	const swizzle = options.swizzle ?? '';
-	const variances = blurredMipmapVariances(target.height, top, options.blurKernel_heightFraction, truncationSigma);
+	const variances = blurredMipmapVariances(target.height, top, options.blurKernel_heightFraction ?? 1/16, truncationSigma);
 	const store = RenderTargetStore.getStoreForRenderTarget(target);
 	const tempOptions = {
 		magFilter: LinearFilter,
