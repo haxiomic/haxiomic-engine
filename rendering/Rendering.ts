@@ -81,20 +81,24 @@ export namespace Rendering {
 		 */
 		toneMappingExposure?: number,
 		/**
-		 * If provided the target will be cleared with this color before rendering
+		 * If provided the target will be cleared with this color before the scene draws
 		 * Otherwise the target will not be cleared
+		 *
+		 * The clear is three's, with `autoClear` for the `render()` call: a scene's colour `background` clears in its
+		 * place, and code that renders from inside the scene (an object's `onBeforeRender`) sees `autoClear` on, with
+		 * this pass's buffers
 		 */
 		clearColor: {
 			rgb: ColorRepresentation,
 			alpha: number,
 		} | false,
 		/**
-		 * If provided the target will be cleared with this depth before rendering
+		 * If provided the target will be cleared with this depth before the scene draws
 		 * Otherwise the target will not be cleared
 		 */
 		clearDepth: boolean,
 		/**
-		 * If provided the target will be cleared with this stencil before rendering
+		 * If provided the target will be cleared with this stencil before the scene draws
 		 * Otherwise the target will not be cleared
 		 */
 		clearStencil?: boolean,
@@ -130,6 +134,9 @@ export namespace Rendering {
 		_renderPassSnapshot.activeMipmapLevel = renderer.getActiveMipmapLevel();
 		_renderPassSnapshot.activeCubeFace = renderer.getActiveCubeFace();
 		let _autoClear = renderer.autoClear;
+		let _autoClearColor = renderer.autoClearColor;
+		let _autoClearDepth = renderer.autoClearDepth;
+		let _autoClearStencil = renderer.autoClearStencil;
 		renderer.getViewport(_renderPassSnapshot.viewport);
 		let _toneMapping = renderer.toneMapping;
 		let _toneMappingExposure = renderer.toneMappingExposure;
@@ -222,9 +229,15 @@ export namespace Rendering {
 			renderer.setClearColor(clearColor.rgb, clearColor.alpha);
 		}
 
+		// three makes the clear, with autoClear: inside render(), after it has drawn any shadow maps and transmission
+		// pass to their own targets, so the clear and the scene's draws are one GPU render pass. A clear made before
+		// render() is a pass of its own there, which on tile-based GPUs writes the whole target out and reads it back
 		let needsClear = clearColor !== false || clearDepth === true || clearStencil === true;
 		if (needsClear) {
-			renderer.clear(clearColor !== false, clearDepth === true, clearStencil === true);
+			renderer.autoClear = true;
+			renderer.autoClearColor = clearColor !== false;
+			renderer.autoClearDepth = clearDepth === true;
+			renderer.autoClearStencil = clearStencil === true;
 		}
 
 		try {
@@ -270,6 +283,9 @@ export namespace Rendering {
 			}
 
 			renderer.autoClear = _autoClear;
+			renderer.autoClearColor = _autoClearColor;
+			renderer.autoClearDepth = _autoClearDepth;
+			renderer.autoClearStencil = _autoClearStencil;
 			renderer.toneMapping = _toneMapping;
 			renderer.toneMappingExposure = _toneMappingExposure;
 			camera.layers.mask = _layersMask;
