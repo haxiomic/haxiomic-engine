@@ -25,3 +25,27 @@ test("a pass run from inside another's render() leaves the outer pass's restore 
     // the outer pass puts back what was there before it, not what the inner pass found
     expect(await page.evaluate(() => window.cases.nestedRestore())).toEqual({ target: null, viewport: [1, 2, 3, 4], clearColor: '00ff00', clearAlpha: 0.5 })
 })
+
+test('the viewport holds on a render target, shadow maps or not', async ({ page }) => {
+    for (const shadows of [false, true]) {
+        const r = await page.evaluate(shadows => window.cases.viewportOnTarget(shadows), shadows)
+        // three binds the target again after drawing its shadow maps, applying the target's own viewport
+        expect(r.drawn[0], `shadows ${shadows}`).toBeGreaterThanOrEqual(0)
+        expect(r.drawn[1], `shadows ${shadows}`).toBeLessThan(32)
+        expect(r.targetViewport).toEqual([0, 0, 64, 64])
+    }
+})
+
+test('with clearColor: false the colour is kept, a colour background too; with a clear colour the background shows', async ({ page }) => {
+    // nothing cleared at all, as when accumulating: three would clear for the background with the app's buffers
+    for (const clearDepth of [false, true]) {
+        const kept = await page.evaluate(clearDepth => window.cases.colourBackground(false, clearDepth), clearDepth)
+        expect(kept, `clearDepth ${clearDepth}`).toEqual({ corner: JUNK, backgroundKept: true })
+    }
+    const cleared = await page.evaluate(() => window.cases.colourBackground({ rgb: 0xff0000, alpha: 0 }, true))
+    // the background's colour, opaque, in place of the clear colour
+    expect(cleared.corner).not.toEqual(JUNK)
+    expect(cleared.corner[0]).toBeLessThan(20)
+    expect(cleared.corner[3]).toBe(255)
+    expect(cleared.backgroundKept).toBe(true)
+})

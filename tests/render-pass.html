@@ -8,7 +8,7 @@
 { "imports": { "three": "/node_modules/three/build/three.module.js" } }
 </script>
 <script type="module">
-import { Color, DataTexture, Mesh, OrthographicCamera, PlaneGeometry, ShaderMaterial, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
+import { BoxGeometry, Color, DataTexture, DirectionalLight, Mesh, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Scene, ShaderMaterial, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
 import { Rendering } from '/dist/rendering/Rendering.js'
 
 /* Rendering.renderPass and its helpers, as their options say: each case into a 64² target filled with junk first */
@@ -19,6 +19,7 @@ canvas.width = canvas.height = SIZE
 const renderer = new WebGLRenderer({ canvas })
 renderer.setPixelRatio(1)
 renderer.setSize(SIZE, SIZE, false)
+renderer.shadowMap.enabled = true
 const ortho = new OrthographicCamera(-1, 1, 1, -1, 0, 1)
 const fill = (rgba) => new Mesh(new PlaneGeometry(2, 2), new ShaderMaterial({
     vertexShader: 'void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }',
@@ -41,6 +42,25 @@ function pixel(t, x, y) {
 }
 const leftHalf = () => new Vector4(0, 0, SIZE / 2, SIZE)
 
+/** a box on a floor, lit from above, casting a shadow or not */
+function litScene(shadows) {
+    const scene = new Scene()
+    const light = new DirectionalLight(0xffffff, 3)
+    light.position.set(2, 4, 3)
+    light.castShadow = shadows
+    const floor = new Mesh(new PlaneGeometry(1.6, 1.6), new MeshStandardMaterial({ color: 0x88aa66 }))
+    floor.rotation.x = -Math.PI / 2
+    floor.receiveShadow = true
+    const box = new Mesh(new BoxGeometry(0.5, 0.5, 0.5), new MeshStandardMaterial({ color: 0xcc4444 }))
+    box.position.y = 0.4
+    box.castShadow = true
+    scene.add(light, floor, box)
+    const camera = new PerspectiveCamera(50, 1, 0.1, 20)
+    camera.position.set(0, 1.5, 2.5)
+    camera.lookAt(0, 0.2, 0)
+    return { scene, camera }
+}
+
 window.cases = {
     /** a blit into the left half with `clear`: the right half's pixel */
     blitRightHalf(clear) {
@@ -49,6 +69,33 @@ window.cases = {
         green.needsUpdate = true
         Rendering.blit(renderer, { source: green, target: t, viewport: leftHalf(), clear, restoreGlobalState: true })
         return pixel(t, SIZE - 2, 1)
+    },
+
+    /** a lit scene into the left half of a render target, its colour kept: the columns it drew in, and the target's viewport after */
+    viewportOnTarget(shadows) {
+        const t = target()
+        const { scene, camera } = litScene(shadows)
+        Rendering.renderPass(renderer, { target: t, scene, camera, viewport: leftHalf(), clearColor: false, clearDepth: true, restoreGlobalState: true })
+        const out = new Uint8Array(SIZE * SIZE * 4)
+        renderer.readRenderTargetPixels(t, 0, 0, SIZE, SIZE, out)
+        let min = SIZE, max = -1
+        for (let i = 0; i < out.length; i += 4) {
+            if (out[i] === 204 && out[i + 1] === 153 && out[i + 2] === 51) continue
+            const x = (i / 4) % SIZE
+            min = Math.min(min, x)
+            max = Math.max(max, x)
+        }
+        return { drawn: [min, max], targetViewport: t.viewport.toArray() }
+    },
+
+    /** a lit scene with a colour background, with `clearColor` and `clearDepth`: a corner pixel (nothing drawn there), and whether the background is back on the scene */
+    colourBackground(clearColor, clearDepth) {
+        const t = target()
+        const { scene, camera } = litScene(true)
+        const background = new Color(0x112233)
+        scene.background = background
+        Rendering.renderPass(renderer, { target: t, scene, camera, clearColor, clearDepth, restoreGlobalState: true })
+        return { corner: pixel(t, 1, 1), backgroundKept: scene.background === background }
     },
 
     /** a pass restoring global state that runs another from inside its render(): what the renderer is left with */
