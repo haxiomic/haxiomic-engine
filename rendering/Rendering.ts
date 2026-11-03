@@ -71,15 +71,18 @@ export namespace Rendering {
 		/**
 		 * If provided the target will be cleared with this color before the scene draws
 		 * Otherwise its colour is kept: a colour `scene.background`, which three clears with whatever `autoClear` says, is
-		 * taken off the scene for the call (a texture background is drawn, as any object)
+		 * taken off the scene for the call (a texture background is drawn, as any object). Renders of the scene made inside
+		 * the call (three's `Reflector`, `Refractor` and `Water`, and glass's transmission pass) see no background either,
+		 * as if the app had set `scene.background = null` around the pass
 		 *
 		 * A clear covers the whole target, whatever `viewport` says: only a scissor test limits it (`target.scissorTest`,
 		 * or the renderer's for the canvas), and the pass leaves that as it finds it
 		 *
-		 * The clear is three's, with `autoClear` for the `render()` call: a scene's colour `background` clears in its
-		 * place, the scene's own `onBeforeRender` runs before it, and code that renders from inside the scene (an
-		 * object's `onBeforeRender`) sees `autoClear` on, with this pass's buffers. With a texture background the clear
-		 * is made before `render()`
+		 * A full clear (colour, depth and stencil) is three's, with `autoClear` on for the `render()` call: a scene's
+		 * colour `background` clears in its place, the scene's own `onBeforeRender` runs before it, and code that renders
+		 * from inside the scene (an object's `onBeforeRender`) sees `autoClear` on, as in plain three. Any other clear,
+		 * and a full one with a texture background or the renderer's `autoClearColor/Depth/Stencil` changed, is made
+		 * before `render()`, with `autoClear` off; a colour `background` then still clears, with those buffers
 		 */
 		clearColor: {
 			rgb: ColorRepresentation,
@@ -134,9 +137,6 @@ export namespace Rendering {
 		const _clearColor = renderer.getClearColor(new Color());
 		const _clearAlpha = renderer.getClearAlpha();
 		let _autoClear = renderer.autoClear;
-		let _autoClearColor = renderer.autoClearColor;
-		let _autoClearDepth = renderer.autoClearDepth;
-		let _autoClearStencil = renderer.autoClearStencil;
 		let _toneMapping = renderer.toneMapping;
 		let _toneMappingExposure = renderer.toneMappingExposure;
 		let _layersMask = camera.layers.mask;
@@ -236,19 +236,22 @@ export namespace Rendering {
 		const _targetViewport = target?.viewport.clone();
 		if (target != null) renderer.getCurrentViewport(target.viewport);
 
-		// three makes the clear, with autoClear: inside render(), after it has drawn any shadow maps and transmission
+		// A full clear is three's, with autoClear: inside render(), after it has drawn any shadow maps and transmission
 		// pass to their own targets, so the clear and the scene's draws are one GPU render pass. A clear made before
 		// render() is a pass of its own there, which on tile-based GPUs writes the whole target out and reads it back.
-		// Not with a texture background: three then clears with whatever clear colour its shadow map left set (white)
+		// Only a full clear with three's own buffers (autoClearColor/Depth/Stencil on, as three sets them), so that code
+		// rendering from inside the scene sees a renderer as plain three leaves it: three's Reflector, Refractor and Water
+		// clear their own target themselves only with autoClear off, and otherwise leave it to three's clear, with those
+		// buffers. Not with a texture background either: three then clears with whatever clear colour its shadow map left
+		// set (white). Any other clear is made before render(), with autoClear off, as it always was
 		let needsClear = clearColor !== false || clearDepth === true || clearStencil === true;
+		const fullClear = clearColor !== false && clearDepth === true && clearStencil === true;
+		const threeBuffers = renderer.autoClearColor && renderer.autoClearDepth && renderer.autoClearStencil;
 		const textureBackground = isScene(scene) && (scene.background as Texture | null)?.isTexture === true;
-		if (needsClear && textureBackground) {
-			renderer.clear(clearColor !== false, clearDepth === true, clearStencil === true);
-		} else if (needsClear) {
+		if (fullClear && threeBuffers && !textureBackground) {
 			renderer.autoClear = true;
-			renderer.autoClearColor = clearColor !== false;
-			renderer.autoClearDepth = clearDepth === true;
-			renderer.autoClearStencil = clearStencil === true;
+		} else if (needsClear) {
+			renderer.clear(clearColor !== false, clearDepth === true, clearStencil === true);
 		}
 
 		try {
@@ -297,9 +300,6 @@ export namespace Rendering {
 			}
 
 			renderer.autoClear = _autoClear;
-			renderer.autoClearColor = _autoClearColor;
-			renderer.autoClearDepth = _autoClearDepth;
-			renderer.autoClearStencil = _autoClearStencil;
 			renderer.toneMapping = _toneMapping;
 			renderer.toneMappingExposure = _toneMappingExposure;
 			camera.layers.mask = _layersMask;
