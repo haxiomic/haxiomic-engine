@@ -24,8 +24,6 @@ export namespace Rendering {
 	/** The latest `saveGlobalState()`: what `restoreGlobalState()` puts back when not given a snapshot */
 	let _latestSave: GlobalStateSnapshot | null = null;
 
-	const SavedMaterialSymbol = Symbol('SavedMaterial');
-
 	/**
 	 * Saves the renderer's render target (with its cube face and mip level), viewport and clear colour, for
 	 * `restoreGlobalState()` to put back, and returns them.
@@ -169,15 +167,18 @@ export namespace Rendering {
 		// exactly that, whatever throws: an override material function, a hook inside render()
 		let _savedOverrideMaterialGlobal: unknown;
 		let _overrodeGlobal = false;
-		// Objects whose `.material` we swapped for a per-object function override.
-		// Recorded explicitly (rather than re-discovered via a second traverse)
-		// so the restore is exact and immune to scene-graph changes during
-		// `renderer.render` — an object added/removed mid-render must not leave a
-		// swapped material stuck on it. A stuck override material is how the
+		// Objects whose `.material` we swapped for a per-object function override,
+		// each with the material it had. Recorded explicitly (rather than
+		// re-discovered via a second traverse) so the restore is exact and immune
+		// to scene-graph changes during `renderer.render` — an object
+		// added/removed mid-render must not leave a swapped material stuck on it.
+		// Kept here, not on the object, so a pass nested inside this one's
+		// render() that overrides the same objects puts back this pass's override,
+		// and this pass the original. A stuck override material is how the
 		// "useProgram: program not valid" crash arises downstream: the picking
 		// material (glslVersion GLSL3) leaks onto a beauty object and is later
 		// re-patched, producing a GLSL3 shader that still uses `gl_FragColor`.
-		let _overriddenObjects: ObjectWidthMaterial[] | undefined; // unset unless the overrideMaterial is a per-object function
+		let _overriddenObjects: [ObjectWidthMaterial, Material | Material[]][] | undefined; // unset unless the overrideMaterial is a per-object function
 		let _colorBackground: Color | undefined;
 		let _targetViewport: Vector4 | undefined;
 
@@ -224,7 +225,7 @@ export namespace Rendering {
 					// reassignable `_overriddenObjects` (let | undefined) inside it.
 					// Recorded before the traverse, so that objects overridden before
 					// a throw from the function are put back too.
-					const overridden: ObjectWidthMaterial[] = [];
+					const overridden: [ObjectWidthMaterial, Material | Material[]][] = [];
 					_overriddenObjects = overridden;
 					scene.traverse((obj) => {
 						if (isScene(obj)) return; // skip scenes as they will globally override materials
@@ -234,8 +235,7 @@ export namespace Rendering {
 							if (newMaterial !== originalMaterial) {
 								(obj as ObjectWidthMaterial).material = newMaterial;
 								// save the original material so we can restore it later
-								(obj as any)[SavedMaterialSymbol] = originalMaterial;
-								overridden.push(obj as ObjectWidthMaterial);
+								overridden.push([obj as ObjectWidthMaterial, originalMaterial]);
 							}
 						}
 					});
@@ -313,12 +313,8 @@ export namespace Rendering {
 				// Restore from the recorded list, not a fresh traverse: the
 				// scene may have changed during render, and only these exact
 				// objects were swapped.
-				for (const obj of _overriddenObjects) {
-					const savedMaterial = (obj as any)[SavedMaterialSymbol] as Material | Material[] | undefined;
-					if (savedMaterial !== undefined) {
-						(obj as ObjectWidthMaterial).material = savedMaterial;
-						(obj as any)[SavedMaterialSymbol] = undefined; // clean up
-					}
+				for (const [obj, originalMaterial] of _overriddenObjects) {
+					obj.material = originalMaterial;
 				}
 			}
 			if (_overrodeGlobal) {

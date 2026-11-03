@@ -109,3 +109,13 @@ test("restoreGlobalState() without a snapshot puts back the app's latest save, n
         afterDispose: knownState,
     })
 })
+
+test('a per-object override inside another on the same objects puts back the outer one, and the outer the originals', async ({ page }) => {
+    // before, each object held one saved material: the inner pass overwrote the original with the outer override, and
+    // the outer pass found none left to put back
+    expect(await page.evaluate(() => window.cases.nestedPerObjectOverrides())).toEqual({
+        during: ['inner', 'inner'],
+        afterInner: ['outer', 'outer'],
+        after: ['original', 'original'],
+    })
+})
