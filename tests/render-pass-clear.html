@@ -8,7 +8,7 @@
 { "imports": { "three": "/node_modules/three/build/three.module.js" } }
 </script>
 <script type="module">
-import { AlwaysDepth, AlwaysStencilFunc, BoxGeometry, Color, DataTexture, DirectionalLight, EqualStencilFunc, KeepStencilOp, LessDepth, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, OrthographicCamera, PerspectiveCamera, PlaneGeometry, ReplaceStencilOp, Scene, ShaderMaterial, WebGLRenderTarget, WebGLRenderer } from 'three'
+import { AlwaysDepth, AlwaysStencilFunc, BoxGeometry, Color, DataTexture, DirectionalLight, EquirectangularReflectionMapping, EqualStencilFunc, KeepStencilOp, LessDepth, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, OrthographicCamera, PerspectiveCamera, PlaneGeometry, ReplaceStencilOp, Scene, ShaderMaterial, WebGLRenderTarget, WebGLRenderer } from 'three'
 import { Rendering } from '/dist/rendering/Rendering.js'
 
 /*
@@ -82,7 +82,8 @@ function fillJunk(target) {
 
 /**
  * A box casting a shadow onto a floor, from a directional light. `shadows: false`: no shadow map; `transmission`: a
- * glass box with something behind it; `background`: 'color' or 'texture'
+ * glass box with something behind it; `background`: 'color', 'texture' (drawn over the whole view) or 'equirect' (three's
+ * box around the camera, which an orthographic camera sees only part of); `ortho`: an orthographic camera
  */
 function makeScene(spec) {
     const scene = new Scene()
@@ -106,12 +107,13 @@ function makeScene(spec) {
         scene.add(behind)
     }
     if (spec.background === 'color') scene.background = new Color(0x112233)
-    if (spec.background === 'texture') {
+    if (spec.background === 'texture' || spec.background === 'equirect') {
         const t = new DataTexture(new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255]), 2, 2)
+        if (spec.background === 'equirect') t.mapping = EquirectangularReflectionMapping
         t.needsUpdate = true
         scene.background = t
     }
-    const camera = new PerspectiveCamera(50, 1, 0.1, 20)
+    const camera = spec.ortho ? new OrthographicCamera(-1.5, 1.5, 1.5, -1.5, 0.1, 20) : new PerspectiveCamera(50, 1, 0.1, 20)
     camera.position.set(0, 1.5, 2.5)
     camera.lookAt(0, 0.2, 0)
     return { scene, camera, box }

@@ -86,7 +86,8 @@ export namespace Rendering {
 		 *
 		 * The clear is three's, with `autoClear` for the `render()` call: a scene's colour `background` clears in its
 		 * place, the scene's own `onBeforeRender` runs before it, and code that renders from inside the scene (an
-		 * object's `onBeforeRender`) sees `autoClear` on, with this pass's buffers
+		 * object's `onBeforeRender`) sees `autoClear` on, with this pass's buffers. With a texture background the clear
+		 * is made before `render()`
 		 */
 		clearColor: {
 			rgb: ColorRepresentation,
@@ -231,9 +232,13 @@ export namespace Rendering {
 
 		// three makes the clear, with autoClear: inside render(), after it has drawn any shadow maps and transmission
 		// pass to their own targets, so the clear and the scene's draws are one GPU render pass. A clear made before
-		// render() is a pass of its own there, which on tile-based GPUs writes the whole target out and reads it back
+		// render() is a pass of its own there, which on tile-based GPUs writes the whole target out and reads it back.
+		// Not with a texture background: three then clears with whatever clear colour its shadow map left set (white)
 		let needsClear = clearColor !== false || clearDepth === true || clearStencil === true;
-		if (needsClear) {
+		const textureBackground = isScene(scene) && (scene.background as Texture | null)?.isTexture === true;
+		if (needsClear && textureBackground) {
+			renderer.clear(clearColor !== false, clearDepth === true, clearStencil === true);
+		} else if (needsClear) {
 			renderer.autoClear = true;
 			renderer.autoClearColor = clearColor !== false;
 			renderer.autoClearDepth = clearDepth === true;

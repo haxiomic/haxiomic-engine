@@ -1,8 +1,9 @@
 import { test, expect } from '@playwright/test'
 
 /* Rendering.renderPass's clear (rendering/Rendering.ts) is three's own: autoClear for the render() call, so it lands
-   after three's shadow maps and transmission pass, in the scene's render pass. Each case is compared exactly with
-   three's own clear, and with the clear renderPass made before (render() after it), to pin what changed. */
+   after three's shadow maps and transmission pass, in the scene's render pass; with a texture background it's made
+   before render(), as it was. Each case is compared exactly with three's own clear, and with the clear renderPass made
+   before (render() after it), to pin what changed. */
 
 test.describe.configure({ mode: 'parallel' })
 
@@ -13,6 +14,7 @@ const SCENES = {
     'shadows': {},
     'no shadows': { shadows: false },
     'a texture background': { background: 'texture' },
+    'an equirect background, orthographic camera': { background: 'equirect', ortho: true },
     'a colour background': { background: 'color' },
     'a colour background, the app clearing no stencil': { background: 'color', appAutoClear: [true, true, false] },
     'glass': { transmission: true },
@@ -21,8 +23,13 @@ const SCENES = {
     "the scene's own onBeforeRender drawing into the target": { sceneDraws: true },
 }
 
+/** a texture background: the clear is made before render(), as it was (three's would use the clear colour its shadow map
+    left set, where the background doesn't cover the view) */
+const textureBackground = spec => spec.background === 'texture' || spec.background === 'equirect'
+
 /** where renderPass's result differs from the clear it made before render() */
 function changed(spec) {
+    if (textureBackground(spec)) return false
     // three clears for a colour background with autoClearColor/Depth/Stencil: the app's before, the pass's now
     if (spec.background === 'color') {
         const [c, d, s] = spec.appAutoClear ?? [true, true, true]
@@ -52,13 +59,13 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(() => expect(errors).toEqual([]))
 
 for (const target of TARGETS) {
-    test(`${target}: the clear is three's own, and differs from the one made before render() only as documented`, async ({ page }) => {
+    test(`${target}: the clear is three's own (made before render() with a texture background), and differs from before only as documented`, async ({ page }) => {
         const wrong = []
         for (const [name, scene] of Object.entries(SCENES)) for (const flags of FLAGS) {
             const spec = { ...scene, ...flags, target }
             const r = await compare(page, spec)
             const what = `${name}, ${JSON.stringify(flags)}`
-            if (any(r.asThree) || JSON.stringify(r.seen.renderPass) !== JSON.stringify(r.seen.three)) wrong.push(`${what}: not three's clear ${JSON.stringify(r.asThree)}`)
+            if (!textureBackground(spec) && (any(r.asThree) || JSON.stringify(r.seen.renderPass) !== JSON.stringify(r.seen.three))) wrong.push(`${what}: not three's clear ${JSON.stringify(r.asThree)}`)
             if (any(r.asBefore) !== changed(spec)) wrong.push(`${what}: ${changed(spec) ? 'same as' : 'differs from'} before ${JSON.stringify(r.asBefore)}`)
             if (!r.restored || r.threw) wrong.push(`${what}: renderer not put back, or threw ${r.threw}`)
         }
@@ -93,6 +100,13 @@ test('over a colour background, only the buffers the pass names are cleared', as
     const r = await compare(page, { background: 'color', depthOccluder: true, target: 'msaa', color: true, depth: false, stencil: false })
     expect(r.asBefore.depth).toBeGreaterThan(0)
     expect(r.asThree).toEqual({ colour: 0, depth: 0, stencil: 0, paint: 0 })
+})
+
+test("with a texture background three doesn't see, the clear colour is the pass's, not what three's shadow map left set", async ({ page }) => {
+    const r = await compare(page, { background: 'equirect', ortho: true, target: 'plain', color: true, depth: true, stencil: true })
+    // three's own clear there is white
+    expect(r.asThree.colour).toBeGreaterThan(0)
+    expect(r.asBefore).toEqual({ colour: 0, depth: 0, stencil: 0, paint: 0 })
 })
 
 test('glass with shadows shows the clear colour behind it, as in three', async ({ page }) => {
