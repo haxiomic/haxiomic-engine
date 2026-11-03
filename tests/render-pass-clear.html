@@ -1,0 +1,261 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Render pass clear fixture</title>
+<!-- no favicon request: a headed browser makes one, a 404 in the console -->
+<link rel="icon" href="data:,">
+
+<script type="importmap">
+{ "imports": { "three": "/node_modules/three/build/three.module.js" } }
+</script>
+<script type="module">
+import { AlwaysDepth, AlwaysStencilFunc, BoxGeometry, Color, DataTexture, DirectionalLight, EquirectangularReflectionMapping, EqualStencilFunc, KeepStencilOp, LessDepth, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, OrthographicCamera, PerspectiveCamera, PlaneGeometry, ReplaceStencilOp, Scene, ShaderMaterial, WebGLRenderTarget, WebGLRenderer } from 'three'
+import { Rendering } from '/dist/rendering/Rendering.js'
+
+/*
+ * Rendering.renderPass's clear, against three's own (autoClear on for render()) and against the clear renderPass used
+ * to make (the target cleared, then rendered with autoClear off). Each runs from the same junk in the target; colour,
+ * depth and stencil are compared exactly, and the GL calls traced to tell where the clear landed.
+ */
+
+const SIZE = Number(new URLSearchParams(location.search).get('size') ?? 64)
+const canvas = document.createElement('canvas')
+canvas.width = canvas.height = SIZE
+const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true, stencil: true })
+renderer.setPixelRatio(1)
+renderer.setSize(SIZE, SIZE, false)
+const gl = renderer.getContext()
+
+// a run's GL calls: each clear and draw, with the framebuffer it went to
+let trace = null
+let bound = null
+const bindFramebuffer = gl.bindFramebuffer.bind(gl)
+gl.bindFramebuffer = (target, fb) => { if (target === gl.FRAMEBUFFER || target === gl.DRAW_FRAMEBUFFER) bound = fb; return bindFramebuffer(target, fb) }
+for (const name of ['clear', 'clearBufferfv', 'clearBufferiv', 'clearBufferuiv', 'clearBufferfi', 'drawArrays', 'drawElements']) {
+    const f = gl[name].bind(gl)
+    const kind = name.startsWith('clear') ? 'clear' : 'draw'
+    gl[name] = (...a) => { trace?.push({ kind, fb: bound }); return f(...a) }
+}
+
+const ortho = new OrthographicCamera(-1, 1, 1, -1, 0, 1)
+const quad = (z, fragment, material) => {
+    const mesh = new Mesh(new PlaneGeometry(2, 2), new ShaderMaterial({
+        vertexShader: `void main() { gl_Position = vec4(position.xy, ${z.toFixed(2)}, 1.0); }`,
+        fragmentShader: `void main() { gl_FragColor = ${fragment}; }`,
+        ...material,
+    }))
+    mesh.frustumCulled = false
+    return mesh
+}
+// junk: colour 204, 153, 51, 153 (exact in 8 bits), depth 0.25 and stencil 1 over the whole target
+const junk = quad(-0.5, 'vec4(0.8, 0.6, 0.2, 0.6)', { depthTest: true, depthFunc: AlwaysDepth, depthWrite: true, stencilWrite: true, stencilFunc: AlwaysStencilFunc, stencilRef: 1, stencilZPass: ReplaceStencilOp })
+// probes, writing colour only: where depth is past 0.99 (cleared: the scene's is nearer), and where stencil is 0
+const depthProbe = quad(0.98, 'vec4(1.0, 0.0, 1.0, 1.0)', { depthTest: true, depthFunc: LessDepth, depthWrite: false })
+const stencilProbe = quad(0, 'vec4(0.0, 1.0, 1.0, 1.0)', { depthTest: false, depthWrite: false, stencilWrite: true, stencilFunc: EqualStencilFunc, stencilRef: 0, stencilFail: KeepStencilOp, stencilZFail: KeepStencilOp, stencilZPass: KeepStencilOp })
+
+const backdrop = quad(0.99, 'vec4(0.0, 0.0, 1.0, 1.0)', { depthTest: false, depthWrite: false })
+
+function drawOver(target, mesh) {
+    const autoClear = renderer.autoClear
+    renderer.autoClear = false
+    renderer.setRenderTarget(target)
+    renderer.render(mesh, ortho)
+    renderer.autoClear = autoClear
+}
+
+function read(target) {
+    const out = new Uint8Array(SIZE * SIZE * 4)
+    if (target == null) {
+        renderer.setRenderTarget(null)
+        gl.readPixels(0, 0, SIZE, SIZE, gl.RGBA, gl.UNSIGNED_BYTE, out)
+    } else {
+        renderer.readRenderTargetPixels(target, 0, 0, SIZE, SIZE, out)
+    }
+    return out
+}
+
+function fillJunk(target) {
+    renderer.setRenderTarget(target)
+    renderer.setClearColor(0x204060, 0.3)
+    renderer.clear(true, true, true)
+    drawOver(target, junk)
+}
+
+/**
+ * A box casting a shadow onto a floor, from a directional light. `shadows: false`: no shadow map; `transmission`: a
+ * glass box with something behind it; `background`: 'color', 'texture' (drawn over the whole view) or 'equirect' (three's
+ * box around the camera, which an orthographic camera sees only part of); `ortho`: an orthographic camera
+ */
+function makeScene(spec) {
+    const scene = new Scene()
+    const light = new DirectionalLight(0xffffff, 3)
+    light.position.set(2, 4, 3)
+    light.castShadow = spec.shadows !== false
+    light.shadow.mapSize.set(256, 256)
+    scene.add(light)
+    // a floor short of the view, so the clear shows around it
+    const floor = new Mesh(new PlaneGeometry(1.6, 1.6), new MeshStandardMaterial({ color: 0x88aa66 }))
+    floor.rotation.x = -Math.PI / 2
+    floor.receiveShadow = true
+    scene.add(floor)
+    const box = new Mesh(new BoxGeometry(0.5, 0.5, 0.5), spec.transmission ? new MeshPhysicalMaterial({ color: 0xffffff, transmission: 1, roughness: 0.1, thickness: 0.5 }) : new MeshStandardMaterial({ color: 0xcc4444 }))
+    box.position.y = 0.4
+    box.castShadow = true
+    scene.add(box)
+    if (spec.transmission) {
+        const behind = new Mesh(new BoxGeometry(0.3, 0.3, 0.3), new MeshStandardMaterial({ color: 0x3355ff }))
+        behind.position.set(-0.4, 0.3, -0.6)
+        scene.add(behind)
+    }
+    if (spec.background === 'color') scene.background = new Color(0x112233)
+    if (spec.background === 'texture' || spec.background === 'equirect') {
+        const t = new DataTexture(new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255]), 2, 2)
+        if (spec.background === 'equirect') t.mapping = EquirectangularReflectionMapping
+        t.needsUpdate = true
+        scene.background = t
+    }
+    const camera = spec.ortho ? new OrthographicCamera(-1.5, 1.5, 1.5, -1.5, 0.1, 20) : new PerspectiveCamera(50, 1, 0.1, 20)
+    camera.position.set(0, 1.5, 2.5)
+    camera.lookAt(0, 0.2, 0)
+    return { scene, camera, box }
+}
+
+const ways = {
+    renderPass: options => Rendering.renderPass(renderer, options),
+    /** three's own clear: autoClear on, for the pass's buffers */
+    three: options => byHand(options, true),
+    /** the clear renderPass made before: the target cleared, then rendered with autoClear off */
+    before: options => byHand(options, false),
+}
+
+function byHand({ target, scene, camera, clearColor, clearDepth, clearStencil }, autoClear) {
+    const app = [renderer.autoClear, renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil]
+    const color = clearColor !== false, depth = clearDepth === true, stencil = clearStencil === true
+    renderer.toneMapping = NoToneMapping
+    renderer.setRenderTarget(target)
+    renderer.setViewport(0, 0, SIZE, SIZE)
+    if (color) renderer.setClearColor(clearColor.rgb, clearColor.alpha)
+    renderer.autoClear = false
+    if (color || depth || stencil) {
+        if (autoClear) Object.assign(renderer, { autoClear: true, autoClearColor: color, autoClearDepth: depth, autoClearStencil: stencil })
+        else renderer.clear(color, depth, stencil)
+    }
+    try {
+        renderer.render(scene, camera)
+    } finally {
+        [renderer.autoClear, renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil] = app
+    }
+}
+
+/**
+ * One case, one way. `target`: 'canvas', 'msaa' or 'plain'. `paint`: the box renders into a target of its own from
+ * its onBeforeRender without clearing it, as an app might for trails; `paintRenders` times. `throws`: its
+ * onBeforeRender throws. `sceneDraws`: the scene's own onBeforeRender draws a blue backdrop into the target.
+ * `depthOccluder`: a near depth over the target's left half, as an earlier pass might leave.
+ * `appAutoClear`: the app's autoClearColor/Depth/Stencil.
+ */
+function run(spec, how) {
+    const target = spec.target === 'canvas' ? null : new WebGLRenderTarget(SIZE, SIZE, { samples: spec.target === 'msaa' ? 4 : 0, depthBuffer: true, stencilBuffer: true })
+    const { scene, camera, box } = makeScene(spec)
+    const paintTarget = spec.paint ? new WebGLRenderTarget(SIZE, SIZE) : null
+    const seen = []
+    if (spec.paint) {
+        fillJunk(paintTarget)
+        const dot = new Mesh(new PlaneGeometry(0.25, 0.25), new MeshBasicMaterial({ color: 0xffffff }))
+        let n = 0
+        box.onBeforeRender = (r) => {
+            seen.push({ autoClear: r.autoClear, color: r.autoClearColor, depth: r.autoClearDepth, stencil: r.autoClearStencil })
+            dot.position.set(-0.6 + 0.3 * n++, 0, 0)
+            const t = r.getRenderTarget()
+            r.setRenderTarget(paintTarget)
+            r.render(dot, ortho)
+            r.setRenderTarget(t)
+        }
+    }
+    if (spec.throws) box.onBeforeRender = () => { throw new Error('a hook threw') }
+    if (spec.sceneDraws) scene.onBeforeRender = (r) => {
+        const autoClear = r.autoClear
+        r.autoClear = false
+        r.render(backdrop, ortho)
+        r.autoClear = autoClear
+    }
+    ;[renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil] = spec.appAutoClear ?? [true, true, true]
+    renderer.autoClear = true
+    renderer.shadowMap.enabled = true
+    fillJunk(target)
+    if (spec.depthOccluder) {
+        const occluder = quad(-0.9, 'vec4(0.0)', { depthTest: true, depthFunc: AlwaysDepth, depthWrite: true, colorWrite: false })
+        occluder.geometry.translate(-1, 0, 0)
+        drawOver(target, occluder)
+    }
+    const state = () => [renderer.autoClear, renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil, Object.hasOwn(renderer, 'clear'), renderer.clear]
+    const before = state()
+    const options = {
+        target, scene, camera,
+        clearColor: spec.color ? { rgb: 0x000000, alpha: spec.alpha ?? 1 } : false,
+        clearDepth: spec.depth, clearStencil: spec.stencil,
+        restoreGlobalState: false,
+    }
+    trace = []
+    let threw = null
+    try {
+        for (let i = 0; i < (spec.paintRenders ?? 1); i++) ways[how](options)
+    } catch (e) {
+        threw = String(e)
+    }
+    const calls = trace
+    trace = null
+    const restored = state().every((x, i) => x === before[i])
+    const colour = read(target)
+    drawOver(target, depthProbe)
+    const depth = read(target)
+    drawOver(target, stencilProbe)
+    const stencil = read(target)
+    const out = { colour, depth, stencil, paint: paintTarget ? read(paintTarget) : null, seen, restored, threw, placement: placement(calls) }
+    target?.dispose()
+    paintTarget?.dispose()
+    return out
+}
+
+/** the clears of the pass's target (where its last draw went), before and after the first draw to another (a shadow map) */
+function placement(calls) {
+    const passFb = calls.findLast(c => c.kind === 'draw')?.fb
+    const firstElsewhere = calls.findIndex(c => c.kind === 'draw' && c.fb !== passFb)
+    const clears = calls.map((c, i) => c.kind === 'clear' && c.fb === passFb ? i : -1).filter(i => i >= 0)
+    if (firstElsewhere < 0) return { before: clears.length, after: 0 }
+    return { before: clears.filter(i => i < firstElsewhere).length, after: clears.filter(i => i > firstElsewhere).length }
+}
+
+const diff = (a, b) => {
+    if (a == null || b == null) return a === b ? 0 : -1
+    let n = 0
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) n++
+    return n
+}
+const diffs = (a, b) => ({ colour: diff(a.colour, b.colour), depth: diff(a.depth, b.depth), stencil: diff(a.stencil, b.stencil), paint: diff(a.paint, b.paint) })
+/** pixels whose first channels are `rgb` */
+const count = (pixels, rgb) => {
+    let n = 0
+    for (let i = 0; i < pixels.length; i += 4) if (rgb.every((x, k) => pixels[i + k] === x)) n++
+    return n
+}
+
+/** renderPass against three's own clear and against the clear it made before */
+window.compare = (spec) => {
+    const r = run(spec, 'renderPass'), three = run(spec, 'three'), before = run(spec, 'before')
+    return {
+        asThree: diffs(r, three), asBefore: diffs(r, before),
+        seen: { renderPass: r.seen, three: three.seen, before: before.seen },
+        restored: r.restored, threw: r.threw,
+        placement: { renderPass: r.placement, before: before.placement },
+        // what the comparisons see, so they mean something: junk colour where nothing cleared or drew, the far plane
+        // where depth was cleared and nothing drew, stencil 0 where it was cleared
+        seenIn: { junk: count(r.colour, [204, 153, 51]), far: count(r.depth, [255, 0, 255]), stencil0: count(r.stencil, [0, 255, 255]) },
+    }
+}
+/** a case's pictures, each way, for screenshots */
+window.pictures = (spec) => Object.fromEntries(Object.keys(ways).map(how => {
+    const r = run(spec, how)
+    return [how, { colour: [...r.colour], paint: r.paint && [...r.paint] }]
+}))
+window.ready = true
+</script>
