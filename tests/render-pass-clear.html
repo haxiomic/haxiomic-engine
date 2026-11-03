@@ -10,6 +10,7 @@
 <script type="module">
 import { AlwaysDepth, AlwaysStencilFunc, BoxGeometry, Color, DataTexture, DirectionalLight, EquirectangularReflectionMapping, EqualStencilFunc, KeepStencilOp, LessDepth, Mesh, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoToneMapping, OrthographicCamera, PerspectiveCamera, PlaneGeometry, ReplaceStencilOp, Scene, ShaderMaterial, WebGLRenderTarget, WebGLRenderer } from 'three'
 import { Rendering } from '/dist/rendering/Rendering.js'
+import { Reflector } from '/node_modules/three/examples/jsm/objects/Reflector.js'
 
 /*
  * Rendering.renderPass's clear, against three's own (autoClear on for render()) and against the clear renderPass used
@@ -62,8 +63,8 @@ function drawOver(target, mesh) {
     renderer.autoClear = autoClear
 }
 
-function read(target) {
-    const out = new Uint8Array(SIZE * SIZE * 4)
+function read(target, Type = Uint8Array) {
+    const out = new Type(SIZE * SIZE * 4)
     if (target == null) {
         renderer.setRenderTarget(null)
         gl.readPixels(0, 0, SIZE, SIZE, gl.RGBA, gl.UNSIGNED_BYTE, out)
@@ -83,7 +84,8 @@ function fillJunk(target) {
 /**
  * A box casting a shadow onto a floor, from a directional light. `shadows: false`: no shadow map; `transmission`: a
  * glass box with something behind it; `background`: 'color', 'texture' (drawn over the whole view) or 'equirect' (three's
- * box around the camera, which an orthographic camera sees only part of); `ortho`: an orthographic camera
+ * box around the camera, which an orthographic camera sees only part of); `ortho`: an orthographic camera; `reflector`:
+ * three's Reflector behind the box (it renders the scene into a target of its own from onBeforeRender)
  */
 function makeScene(spec) {
     const scene = new Scene()
@@ -113,10 +115,16 @@ function makeScene(spec) {
         t.needsUpdate = true
         scene.background = t
     }
+    let mirror = null
+    if (spec.reflector) {
+        mirror = new Reflector(new PlaneGeometry(1.4, 0.9), { textureWidth: SIZE, textureHeight: SIZE, multisample: 0, color: 0x889999 })
+        mirror.position.set(0, 0.45, -0.6)
+        scene.add(mirror)
+    }
     const camera = spec.ortho ? new OrthographicCamera(-1.5, 1.5, 1.5, -1.5, 0.1, 20) : new PerspectiveCamera(50, 1, 0.1, 20)
     camera.position.set(0, 1.5, 2.5)
     camera.lookAt(0, 0.2, 0)
-    return { scene, camera, box }
+    return { scene, camera, box, mirror }
 }
 
 const ways = {
@@ -155,7 +163,7 @@ function byHand({ target, scene, camera, clearColor, clearDepth, clearStencil },
  */
 function run(spec, how) {
     const target = spec.target === 'canvas' ? null : new WebGLRenderTarget(SIZE, SIZE, { samples: spec.target === 'msaa' ? 4 : 0, depthBuffer: true, stencilBuffer: true })
-    const { scene, camera, box } = makeScene(spec)
+    const { scene, camera, box, mirror } = makeScene(spec)
     const paintTarget = spec.paint ? new WebGLRenderTarget(SIZE, SIZE) : null
     const seen = []
     if (spec.paint) {
@@ -198,7 +206,10 @@ function run(spec, how) {
     trace = []
     let threw = null
     try {
-        for (let i = 0; i < (spec.paintRenders ?? 1); i++) ways[how](options)
+        for (let i = 0; i < (spec.renders ?? spec.paintRenders ?? 1); i++) {
+            if (spec.moveBox) box.position.x = -0.4 + 0.4 * i
+            ways[how](options)
+        }
     } catch (e) {
         threw = String(e)
     }
@@ -210,7 +221,9 @@ function run(spec, how) {
     const depth = read(target)
     drawOver(target, stencilProbe)
     const stencil = read(target)
-    const out = { colour, depth, stencil, paint: paintTarget ? read(paintTarget) : null, seen, restored, threw, placement: placement(calls) }
+    // the paint target, or the reflector's (half float)
+    const own = paintTarget ? read(paintTarget) : mirror ? read(mirror.getRenderTarget(), Uint16Array) : null
+    const out = { colour, depth, stencil, paint: own, seen, restored, threw, placement: placement(calls) }
     target?.dispose()
     paintTarget?.dispose()
     return out
