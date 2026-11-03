@@ -146,8 +146,10 @@ export namespace Rendering {
 	/**
 	 * Renders `scene` into `target`, as the options say. This should be used instead of `renderer.render()`
 	 *
-	 * What it changes on the renderer for the call (`autoClear` and its buffers, tone mapping, the camera's layers,
-	 * override materials) is put back after; the render target, viewport and clear colour only with `restoreGlobalState`
+	 * What it changes for the call (`autoClear`, tone mapping, the camera's layers, override materials, a colour
+	 * background taken off with `clearColor: false`, the target's own viewport) is put back after; the render target,
+	 * viewport and clear colour only with `restoreGlobalState`.
+	 * This holds when something in the pass throws, too, such as an override material function or a hook in `render()`
 	 */
 	export function renderPass(renderer: WebGLRenderer, options: RenderPassOptions) {
 		let { target, scene, camera, viewport, clearColor, clearDepth, clearStencil, overrideMaterial, layers } = options;
@@ -164,43 +166,10 @@ export namespace Rendering {
 		let _toneMappingExposure = renderer.toneMappingExposure;
 		let _layersMask = camera.layers.mask;
 
-		// change global state
-		renderer.autoClear = false;
-		renderer.toneMapping = options.toneMapping ?? NoToneMapping;
-		renderer.toneMappingExposure = options.toneMappingExposure ?? 1.0;
-
-		const targetMipmapLevel = options.targetMipmapLevel ?? 0;
-
-		renderer.setRenderTarget(target, options.targetCubeFace, targetMipmapLevel);
-
-		if (viewport != null) {
-			renderer.setViewport(viewport.x, viewport.y, viewport.z, viewport.w);
-		} else if (target != null) {
-			// `target.width/height` are device pixels (the framebuffer's
-			// real pixel count). `renderer.setViewport` is documented as
-			// taking "logical pixel unit" — it stores the value and then
-			// applies `_viewport × pixelRatio` to gl.viewport. So if we
-			// pass device pixels here, gl.viewport ends up DPR-times too
-			// large at any pixelRatio > 1, and the pass fills only the
-			// (1/pixelRatio)² bottom-left fraction of the target. Divide
-			// by pixelRatio so the multiply lands on the correct device-
-			// pixel viewport. At pixelRatio=1 the math is unchanged.
-			const dpr = renderer.getPixelRatio();
-			renderer.setViewport(
-				0, 0,
-				Math.max((target.width >> targetMipmapLevel) / dpr, 1),
-				Math.max((target.height >> targetMipmapLevel) / dpr, 1)
-			);
-		} else {
-			// Same correction as above: drawingBufferWidth/Height are
-			// device pixels, setViewport multiplies by pixelRatio.
-			let gl = renderer.getContext();
-			const dpr = renderer.getPixelRatio();
-			renderer.setViewport(0, 0, gl.drawingBufferWidth / dpr, gl.drawingBufferHeight / dpr);
-		}
-		
-		// set override material (storing the previous one)
-		let _savedOverrideMaterialGlobal: unknown; // this is let unset if the overrideMaterial is not used
+		// What the pass changes on the scene and its target, recorded as it changes it, for the finally to put back
+		// exactly that, whatever throws: an override material function, a hook inside render()
+		let _savedOverrideMaterialGlobal: unknown;
+		let _overrodeGlobal = false;
 		// Objects whose `.material` we swapped for a per-object function override.
 		// Recorded explicitly (rather than re-discovered via a second traverse)
 		// so the restore is exact and immune to scene-graph changes during
@@ -210,83 +179,124 @@ export namespace Rendering {
 		// material (glslVersion GLSL3) leaks onto a beauty object and is later
 		// re-patched, producing a GLSL3 shader that still uses `gl_FragColor`.
 		let _overriddenObjects: ObjectWidthMaterial[] | undefined; // unset unless the overrideMaterial is a per-object function
-		if (overrideMaterial != null) {
-			if (typeof overrideMaterial === 'function') {
-				// Capture a `const` for the traverse closure: TS won't narrow the
-				// reassignable `_overriddenObjects` (let | undefined) inside it.
-				const overridden: ObjectWidthMaterial[] = [];
-				scene.traverse((obj) => {
-					if (isScene(obj)) return; // skip scenes as they will globally override materials
-					if (isObjectWidthMaterial(obj)) {
-						const originalMaterial = obj.material;
-						const newMaterial = overrideMaterial(obj as ObjectWidthMaterial);
-						if (newMaterial !== originalMaterial) {
-							(obj as ObjectWidthMaterial).material = newMaterial;
-							// save the original material so we can restore it later
-							(obj as any)[SavedMaterialSymbol] = originalMaterial;
-							overridden.push(obj as ObjectWidthMaterial);
-						}
-					}
-				});
-				_overriddenObjects = overridden;
-			} else {
-				if (isScene(scene)) {
-					_savedOverrideMaterialGlobal = scene.overrideMaterial;
-					scene.overrideMaterial = overrideMaterial;
-				} else {
-					_savedOverrideMaterialGlobal = scene.material;
-					scene.material = overrideMaterial;
-				}
-			}
-		}
-
-		if (layers != null) {
-			camera.layers.mask = layers.mask;
-		}
-
-		// clear options
-		if (clearColor !== false) {
-			renderer.setClearColor(clearColor.rgb, clearColor.alpha);
-		}
-		// a colour background is three's clear, made whatever autoClear says: with the colour kept, the scene has none
 		let _colorBackground: Color | undefined;
-		if (clearColor === false && isScene(scene) && (scene.background as Color | null)?.isColor === true) {
-			_colorBackground = scene.background as Color;
-			scene.background = null;
-		}
-		// three applies a render target's own viewport each time it binds it, which it does again inside render() after
-		// any shadow maps or transmission pass: so the pass's viewport goes on the target for the call
-		const _targetViewport = target?.viewport.clone();
-		if (target != null) renderer.getCurrentViewport(target.viewport);
-
-		// A full clear is three's, with autoClear: inside render(), after it has drawn any shadow maps and transmission
-		// pass to their own targets, so the clear and the scene's draws are one GPU render pass. A clear made before
-		// render() is a pass of its own there, which on tile-based GPUs writes the whole target out and reads it back.
-		// Only a full clear with three's own buffers (autoClearColor/Depth/Stencil on, as three sets them), so that code
-		// rendering from inside the scene sees a renderer as plain three leaves it: three's Reflector, Refractor and Water
-		// clear their own target themselves only with autoClear off, and otherwise leave it to three's clear, with those
-		// buffers. Not with a texture background either: three then clears with whatever clear colour its shadow map left
-		// set (white). Any other clear is made before render(), with autoClear off, as it always was
-		let needsClear = clearColor !== false || clearDepth === true || clearStencil === true;
-		const fullClear = clearColor !== false && clearDepth === true && clearStencil === true;
-		const threeBuffers = renderer.autoClearColor && renderer.autoClearDepth && renderer.autoClearStencil;
-		const textureBackground = isScene(scene) && (scene.background as Texture | null)?.isTexture === true;
-		if (fullClear && threeBuffers && !textureBackground) {
-			renderer.autoClear = true;
-		} else if (needsClear) {
-			renderer.clear(clearColor !== false, clearDepth === true, clearStencil === true);
-		}
+		let _targetViewport: Vector4 | undefined;
 
 		try {
+			// change global state
+			renderer.autoClear = false;
+			renderer.toneMapping = options.toneMapping ?? NoToneMapping;
+			renderer.toneMappingExposure = options.toneMappingExposure ?? 1.0;
+
+			const targetMipmapLevel = options.targetMipmapLevel ?? 0;
+
+			renderer.setRenderTarget(target, options.targetCubeFace, targetMipmapLevel);
+
+			if (viewport != null) {
+				renderer.setViewport(viewport.x, viewport.y, viewport.z, viewport.w);
+			} else if (target != null) {
+				// `target.width/height` are device pixels (the framebuffer's
+				// real pixel count). `renderer.setViewport` is documented as
+				// taking "logical pixel unit" — it stores the value and then
+				// applies `_viewport × pixelRatio` to gl.viewport. So if we
+				// pass device pixels here, gl.viewport ends up DPR-times too
+				// large at any pixelRatio > 1, and the pass fills only the
+				// (1/pixelRatio)² bottom-left fraction of the target. Divide
+				// by pixelRatio so the multiply lands on the correct device-
+				// pixel viewport. At pixelRatio=1 the math is unchanged.
+				const dpr = renderer.getPixelRatio();
+				renderer.setViewport(
+					0, 0,
+					Math.max((target.width >> targetMipmapLevel) / dpr, 1),
+					Math.max((target.height >> targetMipmapLevel) / dpr, 1)
+				);
+			} else {
+				// Same correction as above: drawingBufferWidth/Height are
+				// device pixels, setViewport multiplies by pixelRatio.
+				let gl = renderer.getContext();
+				const dpr = renderer.getPixelRatio();
+				renderer.setViewport(0, 0, gl.drawingBufferWidth / dpr, gl.drawingBufferHeight / dpr);
+			}
+		
+			// set override material (storing the previous one)
+			if (overrideMaterial != null) {
+				if (typeof overrideMaterial === 'function') {
+					// Capture a `const` for the traverse closure: TS won't narrow the
+					// reassignable `_overriddenObjects` (let | undefined) inside it.
+					// Recorded before the traverse, so that objects overridden before
+					// a throw from the function are put back too.
+					const overridden: ObjectWidthMaterial[] = [];
+					_overriddenObjects = overridden;
+					scene.traverse((obj) => {
+						if (isScene(obj)) return; // skip scenes as they will globally override materials
+						if (isObjectWidthMaterial(obj)) {
+							const originalMaterial = obj.material;
+							const newMaterial = overrideMaterial(obj as ObjectWidthMaterial);
+							if (newMaterial !== originalMaterial) {
+								(obj as ObjectWidthMaterial).material = newMaterial;
+								// save the original material so we can restore it later
+								(obj as any)[SavedMaterialSymbol] = originalMaterial;
+								overridden.push(obj as ObjectWidthMaterial);
+							}
+						}
+					});
+				} else {
+					if (isScene(scene)) {
+						_savedOverrideMaterialGlobal = scene.overrideMaterial;
+						scene.overrideMaterial = overrideMaterial;
+					} else {
+						_savedOverrideMaterialGlobal = scene.material;
+						scene.material = overrideMaterial;
+					}
+					_overrodeGlobal = true;
+				}
+			}
+
+			if (layers != null) {
+				camera.layers.mask = layers.mask;
+			}
+
+			// clear options
+			if (clearColor !== false) {
+				renderer.setClearColor(clearColor.rgb, clearColor.alpha);
+			}
+			// a colour background is three's clear, made whatever autoClear says: with the colour kept, the scene has none
+			if (clearColor === false && isScene(scene) && (scene.background as Color | null)?.isColor === true) {
+				_colorBackground = scene.background as Color;
+				scene.background = null;
+			}
+			// three applies a render target's own viewport each time it binds it, which it does again inside render() after
+			// any shadow maps or transmission pass: so the pass's viewport goes on the target for the call
+			_targetViewport = target?.viewport.clone();
+			if (target != null) renderer.getCurrentViewport(target.viewport);
+
+			// A full clear is three's, with autoClear: inside render(), after it has drawn any shadow maps and transmission
+			// pass to their own targets, so the clear and the scene's draws are one GPU render pass. A clear made before
+			// render() is a pass of its own there, which on tile-based GPUs writes the whole target out and reads it back.
+			// Only a full clear with three's own buffers (autoClearColor/Depth/Stencil on, as three sets them), so that code
+			// rendering from inside the scene sees a renderer as plain three leaves it: three's Reflector, Refractor and Water
+			// clear their own target themselves only with autoClear off, and otherwise leave it to three's clear, with those
+			// buffers. Not with a texture background either: three then clears with whatever clear colour its shadow map left
+			// set (white). Any other clear is made before render(), with autoClear off, as it always was
+			let needsClear = clearColor !== false || clearDepth === true || clearStencil === true;
+			const fullClear = clearColor !== false && clearDepth === true && clearStencil === true;
+			const threeBuffers = renderer.autoClearColor && renderer.autoClearDepth && renderer.autoClearStencil;
+			const textureBackground = isScene(scene) && (scene.background as Texture | null)?.isTexture === true;
+			if (fullClear && threeBuffers && !textureBackground) {
+				renderer.autoClear = true;
+			} else if (needsClear) {
+				renderer.clear(clearColor !== false, clearDepth === true, clearStencil === true);
+			}
+
 			// render
 			renderer.render(scene, camera);
 		} finally {
 			if (_colorBackground !== undefined) (scene as Scene).background = _colorBackground;
-			if (target != null) target.viewport.copy(_targetViewport!);
+			if (_targetViewport !== undefined) target!.viewport.copy(_targetViewport);
 
-			// All restores run in `finally` so a throw during render can never
-			// leave global state or — critically — swapped override materials
-			// stuck on scene objects.
+			// All restores run in `finally` so a throw anywhere in the pass can
+			// never leave global state or — critically — swapped override
+			// materials stuck on scene objects.
 
 			// restore global state
 			// if we only use Rendering.renderPass() rather than renderer.render(), we don't need to restore the global state
@@ -300,25 +310,24 @@ export namespace Rendering {
 			}
 
 			// restore override material (only if changed)
-			if (overrideMaterial != null) {
-				if (typeof overrideMaterial === 'function') {
-					// Restore from the recorded list, not a fresh traverse: the
-					// scene may have changed during render, and only these exact
-					// objects were swapped.
-					for (const obj of _overriddenObjects!) {
-						const savedMaterial = (obj as any)[SavedMaterialSymbol] as Material | Material[] | undefined;
-						if (savedMaterial !== undefined) {
-							(obj as ObjectWidthMaterial).material = savedMaterial;
-							(obj as any)[SavedMaterialSymbol] = undefined; // clean up
-						}
+			if (_overriddenObjects !== undefined) {
+				// Restore from the recorded list, not a fresh traverse: the
+				// scene may have changed during render, and only these exact
+				// objects were swapped.
+				for (const obj of _overriddenObjects) {
+					const savedMaterial = (obj as any)[SavedMaterialSymbol] as Material | Material[] | undefined;
+					if (savedMaterial !== undefined) {
+						(obj as ObjectWidthMaterial).material = savedMaterial;
+						(obj as any)[SavedMaterialSymbol] = undefined; // clean up
 					}
+				}
+			}
+			if (_overrodeGlobal) {
+				// global overrides
+				if (isScene(scene)) {
+					scene.overrideMaterial = _savedOverrideMaterialGlobal as Scene['overrideMaterial'];
 				} else {
-					// global overrides
-					if (isScene(scene)) {
-						scene.overrideMaterial = _savedOverrideMaterialGlobal as Scene['overrideMaterial'];
-					} else {
-						scene.material = _savedOverrideMaterialGlobal as Mesh['material'];
-					}
+					scene.material = _savedOverrideMaterialGlobal as Mesh['material'];
 				}
 			}
 

@@ -1,0 +1,96 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Render pass throws fixture</title>
+<!-- no favicon request: a headed browser makes one, a 404 in the console -->
+<link rel="icon" href="data:,">
+
+<script type="importmap">
+{ "imports": { "three": "/node_modules/three/build/three.module.js" } }
+</script>
+<script type="module">
+import { ACESFilmicToneMapping, Color, Layers, Mesh, MeshBasicMaterial, OrthographicCamera, PlaneGeometry, Scene, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
+import { Rendering } from '/dist/rendering/Rendering.js'
+
+/* Rendering.renderPass puts back everything it changes, whichever of its steps throws */
+
+const SIZE = 64
+const canvas = document.createElement('canvas')
+canvas.width = canvas.height = SIZE
+const renderer = new WebGLRenderer({ canvas })
+renderer.setPixelRatio(1)
+renderer.setSize(SIZE, SIZE, false)
+
+/**
+ * A pass onto a target with a viewport of its own, restoring global state. `override`: 'perObject' (a function) or
+ * 'global' (a material), over a scene of two meshes with a colour background, keeping the colour; or 'meshGlobal', a
+ * material over one of the meshes passed as the scene, as `shaderMaterialPass` does, clearing with a colour.
+ * `throwAt`: where it throws: reading the pass's viewport (before anything is overridden), the per-object override on
+ * the second mesh, reading the pass's layers (after the overrides) or inside render(). Returns what differs from
+ * before the pass
+ */
+window.throwing = (override, throwAt) => {
+    const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1)
+    camera.layers.mask = 0b101
+    const meshes = [0, 1].map(() => new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial()))
+    const originals = meshes.map(m => m.material)
+    const scene = new Scene()
+    scene.add(...meshes)
+    const background = new Color(0x336699)
+    scene.background = background
+    const sceneOverride = new MeshBasicMaterial()
+    scene.overrideMaterial = sceneOverride
+    const appTarget = new WebGLRenderTarget(SIZE, SIZE)
+    const target = new WebGLRenderTarget(SIZE, SIZE)
+    target.viewport.set(1, 2, 30, 40)
+
+    renderer.autoClear = true
+    renderer.toneMapping = ACESFilmicToneMapping
+    renderer.toneMappingExposure = 2
+    renderer.setRenderTarget(appTarget)
+    renderer.setViewport(1, 2, 3, 4)
+    renderer.setClearColor(0x00ff00, 0.5)
+
+    const state = () => ({
+        autoClear: renderer.autoClear,
+        toneMapping: renderer.toneMapping,
+        toneMappingExposure: renderer.toneMappingExposure,
+        renderTarget: renderer.getRenderTarget() === appTarget,
+        viewport: renderer.getViewport(new Vector4()).toArray(),
+        clearColor: renderer.getClearColor(new Color()).getHexString() + ' ' + renderer.getClearAlpha(),
+        cameraLayers: camera.layers.mask,
+        targetViewport: target.viewport.toArray(),
+        background: scene.background === background,
+        sceneOverrideMaterial: scene.overrideMaterial === sceneOverride,
+        meshMaterials: meshes.map((m, i) => m.material === originals[i]),
+        // what renderPass keeps on an object while it's overridden
+        leftOnMeshes: meshes.map(m => Object.getOwnPropertySymbols(m).filter(s => m[s] !== undefined).length),
+    })
+    const before = state()
+
+    const fail = (where) => { throw new Error(`throws at ${where}`) }
+    let n = 0
+    const meshScene = override === 'meshGlobal'
+    const options = {
+        target, scene: meshScene ? meshes[0] : scene, camera,
+        viewport: throwAt === 'viewport' ? { get x() { return fail('viewport') }, y: 0, z: 8, w: 8 } : new Vector4(0, 0, 8, 8),
+        layers: throwAt === 'layers' ? { get mask() { return fail('layers') } } : new Layers(),
+        overrideMaterial: override === 'perObject' ? () => (n++ === 1 && throwAt === 'override') ? fail('override') : new MeshBasicMaterial()
+            : new MeshBasicMaterial(),
+        clearColor: meshScene ? { rgb: 0xff00ff, alpha: 1 } : false, clearDepth: true,
+        restoreGlobalState: true,
+    }
+    if (throwAt === 'render') meshes[0].onBeforeRender = () => fail('render')
+
+    let threw = null
+    try {
+        Rendering.renderPass(renderer, options)
+    } catch (e) {
+        threw = e.message
+    }
+    const after = state()
+    const changed = Object.keys(before).filter(k => JSON.stringify(before[k]) !== JSON.stringify(after[k]))
+    renderer.setRenderTarget(null)
+    return { threw, changed }
+}
+window.ready = true
+</script>
