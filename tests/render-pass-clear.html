@@ -52,6 +52,8 @@ const junk = quad(-0.5, 'vec4(0.8, 0.6, 0.2, 0.6)', { depthTest: true, depthFunc
 const depthProbe = quad(0.98, 'vec4(1.0, 0.0, 1.0, 1.0)', { depthTest: true, depthFunc: LessDepth, depthWrite: false })
 const stencilProbe = quad(0, 'vec4(0.0, 1.0, 1.0, 1.0)', { depthTest: false, depthWrite: false, stencilWrite: true, stencilFunc: EqualStencilFunc, stencilRef: 0, stencilFail: KeepStencilOp, stencilZFail: KeepStencilOp, stencilZPass: KeepStencilOp })
 
+const backdrop = quad(0.99, 'vec4(0.0, 0.0, 1.0, 1.0)', { depthTest: false, depthWrite: false })
+
 function drawOver(target, mesh) {
     const autoClear = renderer.autoClear
     renderer.autoClear = false
@@ -145,7 +147,8 @@ function byHand({ target, scene, camera, clearColor, clearDepth, clearStencil },
 /**
  * One case, one way. `target`: 'canvas', 'msaa' or 'plain'. `paint`: the box renders into a target of its own from
  * its onBeforeRender without clearing it, as an app might for trails; `paintRenders` times. `throws`: its
- * onBeforeRender throws. `depthOccluder`: a near depth over the target's left half, as an earlier pass might leave.
+ * onBeforeRender throws. `sceneDraws`: the scene's own onBeforeRender draws a blue backdrop into the target.
+ * `depthOccluder`: a near depth over the target's left half, as an earlier pass might leave.
  * `appAutoClear`: the app's autoClearColor/Depth/Stencil.
  */
 function run(spec, how) {
@@ -167,6 +170,12 @@ function run(spec, how) {
         }
     }
     if (spec.throws) box.onBeforeRender = () => { throw new Error('a hook threw') }
+    if (spec.sceneDraws) scene.onBeforeRender = (r) => {
+        const autoClear = r.autoClear
+        r.autoClear = false
+        r.render(backdrop, ortho)
+        r.autoClear = autoClear
+    }
     ;[renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil] = spec.appAutoClear ?? [true, true, true]
     renderer.autoClear = true
     renderer.shadowMap.enabled = true

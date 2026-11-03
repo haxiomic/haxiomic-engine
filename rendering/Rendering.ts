@@ -85,8 +85,8 @@ export namespace Rendering {
 		 * Otherwise the target will not be cleared
 		 *
 		 * The clear is three's, with `autoClear` for the `render()` call: a scene's colour `background` clears in its
-		 * place, and code that renders from inside the scene (an object's `onBeforeRender`) sees `autoClear` on, with
-		 * this pass's buffers
+		 * place, the scene's own `onBeforeRender` runs before it, and code that renders from inside the scene (an
+		 * object's `onBeforeRender`) sees `autoClear` on, with this pass's buffers
 		 */
 		clearColor: {
 			rgb: ColorRepresentation,

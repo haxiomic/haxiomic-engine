@@ -18,6 +18,7 @@ const SCENES = {
     'glass': { transmission: true },
     'glass, no shadows': { transmission: true, shadows: false },
     'an object rendering a target of its own': { paint: true },
+    "the scene's own onBeforeRender drawing into the target": { sceneDraws: true },
 }
 
 /** where renderPass's result differs from the clear it made before render() */
@@ -32,6 +33,8 @@ function changed(spec) {
     if (spec.transmission) return spec.shadows !== false && spec.color && spec.depth && spec.alpha === 1
     // an object's own render() from onBeforeRender sees autoClear on, with the pass's buffers
     if (spec.paint) return spec.color
+    // the scene's onBeforeRender runs before three's clear, so what it draws into the target is cleared
+    if (spec.sceneDraws) return spec.color
     return false
 }
 
@@ -77,6 +80,12 @@ test('code rendering from inside the scene sees autoClear on, with the pass\'s b
     expect(r.seen.renderPass).toEqual(Array(3).fill({ autoClear: true, color: true, depth: false, stencil: false }))
     // its own target is cleared by its render() now: one dot, not three
     expect(r.asBefore.paint).toBeGreaterThan(0)
+})
+
+test("the scene's own onBeforeRender runs before the clear: what it draws into the target is cleared", async ({ page }) => {
+    const r = await compare(page, { sceneDraws: true, target: 'plain', color: true, depth: true, stencil: false })
+    expect(r.asBefore.colour).toBeGreaterThan(0)
+    expect(r.asThree).toEqual({ colour: 0, depth: 0, stencil: 0, paint: 0 })
 })
 
 test('over a colour background, only the buffers the pass names are cleared', async ({ page }) => {
