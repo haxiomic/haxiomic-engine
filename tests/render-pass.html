@@ -8,12 +8,14 @@
 { "imports": { "three": "/node_modules/three/build/three.module.js" } }
 </script>
 <script type="module">
-import { BoxGeometry, Color, DataTexture, DirectionalLight, LinearMipmapLinearFilter, Mesh, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Scene, ShaderMaterial, Vector4, WebGLRenderTarget, WebGLRenderer } from 'three'
+import { BoxGeometry, Color, DataTexture, DirectionalLight, LinearMipmapLinearFilter, Mesh, MeshStandardMaterial, OrthographicCamera, PerspectiveCamera, PlaneGeometry, Scene, ShaderMaterial, Vector4, WebGLCubeRenderTarget, WebGLRenderTarget, WebGLRenderer } from 'three'
 import { Rendering } from '/dist/rendering/Rendering.js'
 import RenderTargetStore from '/dist/rendering/RenderTargetStore.js'
 import { generateBlurredMipmaps } from '/dist/rendering/BlurredMipmapChain.js'
 import { gaussianBlur } from '/dist/rendering/GaussianBlur.js'
 import { pyramidBloom } from '/dist/rendering/PyramidBloom.js'
+import { DualRenderTarget } from '/dist/rendering/DualRenderTarget.js'
+import { FluidSimulation } from '/dist/fluid/FluidSimulation.js'
 
 /* Rendering.renderPass and its helpers, as their options say: each case into a 64² target filled with junk first */
 
@@ -237,6 +239,72 @@ window.cases = {
         pyramidBloom(renderer, new RenderTargetStore(), source.texture, [{ sigma: 8, weight: 1 }])
         const afterBloom = globalState()
         return { afterBlur: [afterBlur.clearColor, afterBlur.clearAlpha], afterBloom: [afterBloom.clearColor, afterBloom.clearAlpha] }
+    },
+
+    /** each helper that restores its own state, run inside an app's save, then the app's restoreGlobalState() */
+    helpersInsideSave() {
+        const source = target()
+        const helpers = {
+            mipmaps: () => generateBlurredMipmaps(renderer, { target: new WebGLRenderTarget(SIZE, SIZE, { minFilter: LinearMipmapLinearFilter }), blurKernel_heightFraction: 1 / 16 }),
+            antiAliasedMipmaps: () => generateBlurredMipmaps(renderer, { target: new WebGLRenderTarget(SIZE, SIZE, { minFilter: LinearMipmapLinearFilter }), blurKernel_heightFraction: 1 / 16, antiAliased: true }),
+            gaussianBlur: () => gaussianBlur(renderer, new RenderTargetStore(), source.texture, 9),
+            pyramidBloom: () => pyramidBloom(renderer, new RenderTargetStore(), source.texture, [{ sigma: 8, weight: 1 }]),
+            fluidStep: () => {
+                const fluid = new FluidSimulation(renderer, SIZE, SIZE, false, 1)
+                const shader = fill([0, 0, 0, 1]).material
+                const paint = (t) => Rendering.shaderMaterialPass(renderer, { target: t, shader, restoreGlobalState: false })
+                fluid.step(1 / 60, paint, paint)
+            },
+            dualTargetResize: () => new DualRenderTarget(renderer, 16, 16, {}).resize(32, 32),
+        }
+        const other = target()
+        const states = {}
+        for (const [name, helper] of Object.entries(helpers)) {
+            setKnownState()
+            Rendering.saveGlobalState(renderer)
+            renderer.setRenderTarget(other)
+            renderer.setViewport(0, 0, 8, 8)
+            renderer.setClearColor(0xff0000, 1)
+            helper()
+            Rendering.restoreGlobalState(renderer)
+            states[name] = globalState(new Map([[other, 'other']]))
+        }
+        return states
+    },
+
+    /** a cube target's face and mip level, through a save, a helper, a restoring pass and the restore */
+    cubeFaceAndMipLevel() {
+        const cube = new WebGLCubeRenderTarget(16, { generateMipmaps: true, minFilter: LinearMipmapLinearFilter })
+        const source = target()
+        const bound = () => [renderer.getRenderTarget() === cube, renderer.getActiveCubeFace(), renderer.getActiveMipmapLevel()]
+        renderer.setRenderTarget(cube, 3, 1)
+        const snapshot = Rendering.saveGlobalState(renderer)
+        gaussianBlur(renderer, new RenderTargetStore(), source.texture, 9)
+        const afterHelper = bound()
+        Rendering.renderPass(renderer, { target: source, scene: fill([1, 1, 1, 1]), camera: ortho, clearColor: false, clearDepth: false, restoreGlobalState: true })
+        const afterPass = bound()
+        renderer.setRenderTarget(null)
+        Rendering.restoreGlobalState(renderer)
+        const afterRestore = bound()
+        renderer.setRenderTarget(null)
+        Rendering.restoreGlobalState(renderer, snapshot)
+        const afterSnapshotRestore = bound()
+        renderer.setRenderTarget(null)
+        return { afterHelper, afterPass, afterRestore, afterSnapshotRestore }
+    },
+
+    /** restoreGlobalState() with no save of the app's: before any save; and after a helper, then a pass that doesn't restore */
+    restoreWithoutSave() {
+        setKnownState()
+        Rendering.restoreGlobalState(renderer)
+        const beforeAnySave = globalState()
+        const t = target()
+        setKnownState()
+        generateBlurredMipmaps(renderer, { target: new WebGLRenderTarget(SIZE, SIZE, { minFilter: LinearMipmapLinearFilter }) })
+        Rendering.renderPass(renderer, { target: t, scene: fill([1, 1, 1, 1]), camera: ortho, clearColor: false, clearDepth: false, restoreGlobalState: false })
+        Rendering.restoreGlobalState(renderer)
+        const afterHelperAndPass = globalState(new Map([[t, 'the pass\'s target']])).target
+        return { beforeAnySave, afterHelperAndPass }
     },
 }
 window.ready = true

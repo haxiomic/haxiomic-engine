@@ -21,20 +21,6 @@ export namespace Rendering {
 		clearAlpha: number,
 	}
 
-	function newSnapshot(): GlobalStateSnapshot {
-		return { renderTarget: null, activeCubeFace: 0, activeMipmapLevel: 0, viewport: new Vector4(), clearColor: new Color(), clearAlpha: 0 };
-	}
-
-	function captureGlobalState(renderer: WebGLRenderer, snapshot: GlobalStateSnapshot): GlobalStateSnapshot {
-		snapshot.renderTarget = renderer.getRenderTarget();
-		snapshot.activeCubeFace = renderer.getActiveCubeFace();
-		snapshot.activeMipmapLevel = renderer.getActiveMipmapLevel();
-		renderer.getViewport(snapshot.viewport);
-		renderer.getClearColor(snapshot.clearColor);
-		snapshot.clearAlpha = renderer.getClearAlpha();
-		return snapshot;
-	}
-
 	/** The latest `saveGlobalState()`: what `restoreGlobalState()` puts back when not given a snapshot */
 	let _latestSave: GlobalStateSnapshot | null = null;
 
@@ -45,34 +31,42 @@ export namespace Rendering {
 	 * `restoreGlobalState()` to put back, and returns them.
 	 *
 	 * `restoreGlobalState()` without a snapshot puts back the latest save, as many times as it's called, and a save
-	 * needn't be restored. To nest saves, keep the snapshot and pass it to `restoreGlobalState()`: it puts back exactly
-	 * this state, whatever was saved since. Nothing needs releasing; a snapshot never restored is garbage
+	 * needn't be restored. Only this function makes the latest save: the engine's passes and helpers keep their own
+	 * state, so a restore without a snapshot puts back the app's last save, never a helper's.
+	 *
+	 * To nest saves, keep the snapshot and pass it to `restoreGlobalState()`: it puts back exactly this state, whatever
+	 * was saved since. Code that runs inside a caller's save and restores its own state, such as a library's helper,
+	 * should use `snapshotGlobalState()` instead, so the caller's save stays the latest
 	 */
 	export function saveGlobalState(renderer: WebGLRenderer): GlobalStateSnapshot {
 		return _latestSave = snapshotGlobalState(renderer);
 	}
 
 	/**
-	 * The state `saveGlobalState()` saves, without making it the latest save: for code that restores its own snapshot, so
-	 * it leaves a caller's `saveGlobalState()` as it was (the engine's passes and helpers use this)
+	 * The state `saveGlobalState()` saves, without making it the latest save: for code that restores its own snapshot
+	 * (the engine's helpers use it), so a caller's `saveGlobalState()` stays the latest
 	 */
 	export function snapshotGlobalState(renderer: WebGLRenderer): GlobalStateSnapshot {
-		return captureGlobalState(renderer, newSnapshot());
+		return {
+			renderTarget: renderer.getRenderTarget(),
+			activeCubeFace: renderer.getActiveCubeFace(),
+			activeMipmapLevel: renderer.getActiveMipmapLevel(),
+			viewport: renderer.getViewport(new Vector4()),
+			clearColor: renderer.getClearColor(new Color()),
+			clearAlpha: renderer.getClearAlpha(),
+		};
 	}
 
-	/** Puts back `snapshot`, or without one the latest `saveGlobalState()` (nothing before any save) */
+	/**
+	 * Puts back `snapshot`. Without one (or with `undefined`) it puts back the latest `saveGlobalState()`, and nothing
+	 * before any save; `null` puts back nothing
+	 */
 	export function restoreGlobalState(renderer: WebGLRenderer, snapshot: GlobalStateSnapshot | null = _latestSave) {
 		if (snapshot === null) return;
 		renderer.setRenderTarget(snapshot.renderTarget, snapshot.activeCubeFace, snapshot.activeMipmapLevel);
 		renderer.setViewport(snapshot.viewport);
 		renderer.setClearColor(snapshot.clearColor, snapshot.clearAlpha);
 	}
-
-	// renderPass's own snapshots, one per nesting depth (a pass may run inside another's render()). Only renderPass uses
-	// them, and it puts the depth back in a finally, so it's 0 again after the outermost pass however passes end. Reused:
-	// a pass allocates only the first time a depth is reached
-	const _passStates: GlobalStateSnapshot[] = [];
-	let _passDepth = 0;
 
 	export type RenderPassOptions = {
 		scene: Mesh | Scene,
@@ -156,21 +150,15 @@ export namespace Rendering {
 	 * override materials) is put back after; the render target, viewport and clear colour only with `restoreGlobalState`
 	 */
 	export function renderPass(renderer: WebGLRenderer, options: RenderPassOptions) {
-		const depth = _passDepth;
-		const saved = _passStates[depth] ?? (_passStates[depth] = newSnapshot());
-		_passDepth = depth + 1;
-		try {
-			renderPassFrom(captureGlobalState(renderer, saved), renderer, options);
-		} finally {
-			_passDepth = depth;
-			saved.renderTarget = null; // don't keep the target alive
-		}
-	}
-
-	function renderPassFrom(saved: GlobalStateSnapshot, renderer: WebGLRenderer, options: RenderPassOptions) {
 		let { target, scene, camera, viewport, clearColor, clearDepth, clearStencil, overrideMaterial, layers } = options;
 
-		// save global state (render target, viewport and clear colour are in `saved`)
+		// save global state (this call's own: a pass may run inside another's render())
+		const _renderTarget = renderer.getRenderTarget();
+		const _activeMipmapLevel = renderer.getActiveMipmapLevel();
+		const _activeCubeFace = renderer.getActiveCubeFace();
+		const _viewport = renderer.getViewport(new Vector4());
+		const _clearColor = renderer.getClearColor(new Color());
+		const _clearAlpha = renderer.getClearAlpha();
 		let _autoClear = renderer.autoClear;
 		let _toneMapping = renderer.toneMapping;
 		let _toneMappingExposure = renderer.toneMappingExposure;
@@ -304,10 +292,10 @@ export namespace Rendering {
 			// if we only use Rendering.renderPass() rather than renderer.render(), we don't need to restore the global state
 			// changing renderTarget can be expensive, so we should avoid it if possible
 			if (options.restoreGlobalState === true) {
-				renderer.setRenderTarget(saved.renderTarget, saved.activeCubeFace, saved.activeMipmapLevel);
-				renderer.setViewport(saved.viewport);
+				renderer.setRenderTarget(_renderTarget, _activeCubeFace, _activeMipmapLevel);
+				renderer.setViewport(_viewport);
 				if (clearColor !== false) {
-					renderer.setClearColor(saved.clearColor, saved.clearAlpha);
+					renderer.setClearColor(_clearColor, _clearAlpha);
 				}
 			}
 
@@ -613,7 +601,6 @@ export namespace Rendering {
 		}
 
 		_latestSave = null;
-		_passStates.length = 0;
 	}
 
 }

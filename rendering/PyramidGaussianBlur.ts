@@ -25,7 +25,7 @@ export type PyramidGaussianBlurOptions = {
 	target?: WebGLRenderTarget | null,
 	/** Key for the cached intermediate and result targets @default texture.uuid */
 	cacheId?: string | null,
-	/** Restore the renderer's render target & viewport afterwards @default true */
+	/** Restore the renderer's render target, viewport and clear colour afterwards @default true */
 	restoreGlobalState?: boolean,
 	/**
 	 * Advanced. Smallest σ, in texels, of the exact Gaussian run at the coarsest level. Lower is cheaper but less

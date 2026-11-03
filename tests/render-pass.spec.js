@@ -84,3 +84,21 @@ test('gaussianBlur and pyramidBloom put back the clear colour', async ({ page })
     // their passes clear with shaderMaterialPass's default magenta
     expect(await page.evaluate(() => window.cases.blurClearColour())).toEqual({ afterBlur: ['00ff00', 0.5], afterBloom: ['00ff00', 0.5] })
 })
+
+test("every helper that restores its own state leaves an app's save intact", async ({ page }) => {
+    const states = await page.evaluate(() => window.cases.helpersInsideSave())
+    for (const helper of ['mipmaps', 'antiAliasedMipmaps', 'gaussianBlur', 'pyramidBloom', 'fluidStep', 'dualTargetResize']) {
+        expect(states[helper], helper).toEqual(knownState)
+    }
+})
+
+test("a cube target's face and mip level are put back by a helper, a restoring pass and a restore", async ({ page }) => {
+    const bound = [true, 3, 1]
+    expect(await page.evaluate(() => window.cases.cubeFaceAndMipLevel())).toEqual({ afterHelper: bound, afterPass: bound, afterRestore: bound, afterSnapshotRestore: bound })
+})
+
+test("restoreGlobalState() with no save of the app's puts back nothing, not a helper's state", async ({ page }) => {
+    // before, the helpers saved there too: a restore after one put back the state from the helper's start, and before
+    // any save it put back the canvas with a zero-width viewport
+    expect(await page.evaluate(() => window.cases.restoreWithoutSave())).toEqual({ beforeAnySave: knownState, afterHelperAndPass: "the pass's target" })
+})

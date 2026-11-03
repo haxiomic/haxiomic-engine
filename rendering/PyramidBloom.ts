@@ -46,7 +46,7 @@ export type PyramidBloomOptions = {
 	target?: WebGLRenderTarget | null,
 	/** Key for the cached intermediate and result targets @default texture.uuid */
 	cacheId?: string | null,
-	/** Restore the renderer's render target & viewport afterwards @default true */
+	/** Restore the renderer's render target, viewport and clear colour afterwards @default true */
 	restoreGlobalState?: boolean,
 	/**
 	 * Advanced, overrides `quality`. Smallest core σ in texels of its level, optionally per term (index in σ order);
