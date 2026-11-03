@@ -184,6 +184,8 @@ function wrapGLSL(wrap: WrapMode) {
  * at i + 0.5)
  */
 export const bsplineGLSL = /*glsl*/`
+#ifndef PYRAMID_BSPLINE_GLSL
+#define PYRAMID_BSPLINE_GLSL
 	vec4 sampleBSpline(sampler2D tex, vec2 p, vec2 invSize) {
 		vec2 tc = p - 0.5;
 		vec2 base = floor(tc);
@@ -202,6 +204,26 @@ export const bsplineGLSL = /*glsl*/`
 			g0.y * (g0.x * textureLod(tex, vec2(h0.x, h0.y), 0.0) + g1.x * textureLod(tex, vec2(h1.x, h0.y), 0.0)) +
 			g1.y * (g0.x * textureLod(tex, vec2(h0.x, h1.y), 0.0) + g1.x * textureLod(tex, vec2(h1.x, h1.y), 0.0));
 	}
+#endif
+`;
+
+/**
+ * The [1,3,3,1]/8 downsample of `DownsampleMaterial` ('binomial4', unpadded, clamped) as a GLSL function of the output
+ * fragment: the same four bilinear taps, in the same order
+ */
+export const binomialDownsampleGLSL = /*glsl*/`
+#ifndef PYRAMID_BINOMIAL_DOWNSAMPLE_GLSL
+#define PYRAMID_BINOMIAL_DOWNSAMPLE_GLSL
+	vec4 binomialDownsample(sampler2D source, vec2 sourceInvSize) {
+		vec2 c = gl_FragCoord.xy * 2.0;
+		vec4 result = vec4(0.0);
+		result += textureLod(source, (c + vec2(-0.75, -0.75)) * sourceInvSize, 0.0) * 0.25;
+		result += textureLod(source, (c + vec2(0.75, -0.75)) * sourceInvSize, 0.0) * 0.25;
+		result += textureLod(source, (c + vec2(-0.75, 0.75)) * sourceInvSize, 0.0) * 0.25;
+		result += textureLod(source, (c + vec2(0.75, 0.75)) * sourceInvSize, 0.0) * 0.25;
+		return result;
+	}
+#endif
 `;
 
 export class DownsampleMaterial extends ShaderMaterial<{

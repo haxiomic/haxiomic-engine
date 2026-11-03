@@ -65,6 +65,32 @@ test.describe('gaussian blur & pyramid bloom', () => {
         expect(await page.evaluate(() => window.bloomResolutionIndependence())).toBeLessThan(0.01)
     })
 
+    test('pyramidBloom weights each channel separately', async ({ page }) => {
+        // a Vector4 weight per term is the same as one scalar-weighted run per channel
+        for (const [c, e] of (await page.evaluate(() => window.bloomChannelWeights())).entries()) expect(e, `channel ${c}`).toBeLessThan(1e-5)
+    })
+
+    test('pyramidBloom from a downsampled source matches the full image', async ({ page }) => {
+        const r = await page.evaluate(() => window.bloomSourceLevel())
+        expect(r.finestLevel).toBeGreaterThanOrEqual(1)
+        expect(r.coarseSize).toEqual([129, 97])
+        expect(r.error).toBeLessThan(1e-5)
+    })
+
+    test('pyramidBloom from a source downsampled 2 or 3 times is close to the full image', async ({ page }) => {
+        // the one B-spline read replaces the pyramid's 2x upsamples: the same variance, not the same kernel (≈ 1-2%)
+        for (const [sourceLevel, sigmas] of [[2, [8, 16, 32, 64]], [3, [16, 32, 64]]]) {
+            const r = await page.evaluate(([s, sigmas]) => window.bloomSourceLevel(s, sigmas), [sourceLevel, sigmas])
+            expect(r.finestLevel, `sourceLevel ${sourceLevel}`).toBeGreaterThanOrEqual(sourceLevel)
+            expect(r.error, `sourceLevel ${sourceLevel}`).toBeLessThan(0.03)
+        }
+    })
+
+    test('pyramidBloom rejects an invalid sourceLevel', async ({ page }) => {
+        const errors = await page.evaluate(() => window.bloomSourceLevelErrors())
+        for (const e of errors) expect(e).toMatch(/^pyramidBloom: sourceLevel/)
+    })
+
     test('pyramidBloom with the mip bloom terms looks the same as the mipmap chain bloom', async ({ page }) => {
         // smooth input, where the mipmap chain does not alias: same σ per level and same weights
         expect(await page.evaluate(() => window.bloomParity())).toBeLessThan(0.03)
