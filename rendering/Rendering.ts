@@ -70,7 +70,8 @@ export namespace Rendering {
 		toneMappingExposure?: number,
 		/**
 		 * If provided the target will be cleared with this color before the scene draws
-		 * Otherwise the target will not be cleared
+		 * Otherwise its colour is kept: a colour `scene.background`, which three clears with whatever `autoClear` says, is
+		 * taken off the scene for the call (a texture background is drawn, as any object)
 		 *
 		 * A clear covers the whole target, whatever `viewport` says: only a scissor test limits it (`target.scissorTest`,
 		 * or the renderer's for the canvas), and the pass leaves that as it finds it
@@ -96,7 +97,8 @@ export namespace Rendering {
 		 */
 		clearStencil?: boolean,
 		/**
-		 * Override viewport, by default it will spans the entire target
+		 * Draw into this rectangle of the target, in the renderer's pixels (it multiplies them by its pixel ratio). By
+		 * default the whole target, or its mip level. On a render target it's the target's `viewport` for the call
 		 */
 		viewport?: Vector4,
 		/**
@@ -223,6 +225,16 @@ export namespace Rendering {
 		if (clearColor !== false) {
 			renderer.setClearColor(clearColor.rgb, clearColor.alpha);
 		}
+		// a colour background is three's clear, made whatever autoClear says: with the colour kept, the scene has none
+		let _colorBackground: Color | undefined;
+		if (clearColor === false && isScene(scene) && (scene.background as Color | null)?.isColor === true) {
+			_colorBackground = scene.background as Color;
+			scene.background = null;
+		}
+		// three applies a render target's own viewport each time it binds it, which it does again inside render() after
+		// any shadow maps or transmission pass: so the pass's viewport goes on the target for the call
+		const _targetViewport = target?.viewport.clone();
+		if (target != null) renderer.getCurrentViewport(target.viewport);
 
 		// three makes the clear, with autoClear: inside render(), after it has drawn any shadow maps and transmission
 		// pass to their own targets, so the clear and the scene's draws are one GPU render pass. A clear made before
@@ -243,6 +255,9 @@ export namespace Rendering {
 			// render
 			renderer.render(scene, camera);
 		} finally {
+			if (_colorBackground !== undefined) (scene as Scene).background = _colorBackground;
+			if (target != null) target.viewport.copy(_targetViewport!);
+
 			// All restores run in `finally` so a throw during render can never
 			// leave global state or — critically — swapped override materials
 			// stuck on scene objects.
